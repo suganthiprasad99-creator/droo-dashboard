@@ -7,6 +7,33 @@ import { modules } from '@/lib/dashboard-config'
 const ACCESS_TOKEN_KEY = 'droo.dev_access_token.v2'
 const REFRESH_TOKEN_KEY = 'droo.dev_refresh_token.v2'
 
+const demoRows: Partial<Record<ModuleName, ApiRecord[]>> = {
+  'Live Operations': [
+    { id: 'drv_demo_1', status: 'online', active_order_id: 'ord_demo_1001', driver: { id: 'drv_demo_1', name: 'Naveen Kumar', phone: '+91 90000 10001' }, position: { latitude: 13.0827, longitude: 80.2707, recorded_at: new Date().toISOString(), heading_deg: 115 } },
+    { id: 'drv_demo_2', status: 'online', active_order_id: 'ord_demo_1002', driver: { id: 'drv_demo_2', name: 'Arun Prakash', phone: '+91 90000 10002' }, position: { latitude: 13.0604, longitude: 80.2496, recorded_at: new Date().toISOString(), heading_deg: 45 } },
+  ],
+  Orders: [
+    { id: 'ord_demo_1001', external_reference: 'DEMO-1001', status: 'assigned', assigned_driver: 'Naveen Kumar', price: '₹1,450.75', updated_at: new Date().toISOString() },
+    { id: 'ord_demo_1002', external_reference: 'DEMO-1002', status: 'published', assigned_driver: '—', price: '₹860.00', updated_at: new Date().toISOString() },
+    { id: 'ord_demo_1003', external_reference: 'DEMO-1003', status: 'delivered', assigned_driver: 'Arun Prakash', price: '₹1,120.00', updated_at: new Date().toISOString() },
+  ],
+  Drivers: [{ id: 'drv_demo_1', name: 'Naveen Kumar', type: 'internal', status: 'online', phone: '+91 90000 10001' }, { id: 'drv_demo_2', name: 'Arun Prakash', type: 'solo', status: 'online', phone: '+91 90000 10002' }],
+  Applications: [{ id: 'app_demo_1', name: 'Karthik S', status: 'pending_review', vehicle_type: 'Motorcycle', submitted_at: new Date().toISOString() }],
+  'Service Areas': [{ id: 'area_demo_1', name: 'Chennai Central', status: 'active', type: 'polygon', drivers_online: 10 }],
+  Pricing: [{ id: 'price_demo_1', name: 'Chennai Standard', status: 'active', base_price: '₹60', per_km: '₹14' }],
+  Earnings: [{ id: 'earn_demo_1', driver: 'Naveen Kumar', status: 'eligible', amount: '₹920.00', order_id: 'ord_demo_1001' }],
+  Integrations: [{ id: 'hook_demo_1', name: 'Order status webhook', status: 'active', type: 'webhook', endpoint: 'https://example.test/droo/events' }],
+}
+
+function fallbackRows(module: ModuleName) {
+  if (module === 'Overview') return [
+    ...(demoRows.Orders || []).map(row => ({ ...row, __kind: 'order' })),
+    ...(demoRows.Drivers || []).map(row => ({ ...row, __kind: 'driver', online: row.status === 'online' })),
+    ...(demoRows.Earnings || []).map(row => ({ ...row, __kind: 'earning' })),
+  ]
+  return demoRows[module] || []
+}
+
 async function devLogin() {
   const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '+916369487527', purpose: 'login' }) })
   if (!challengeResponse.ok) throw new Error(`Development login request failed (${challengeResponse.status})`)
@@ -78,7 +105,15 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
       const value = await response.json()
       if (!cancelled) setRows(Array.isArray(value) ? value : value.data || [])
     }
-    load().catch(value => !cancelled && setError(value instanceof Error ? value.message : 'API request failed')).finally(() => !cancelled && setLoading(false))
+    load().catch(value => {
+      if (cancelled) return
+      if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
+        setRows(fallbackRows(module))
+        setError('')
+        return
+      }
+      setError(value instanceof Error ? value.message : 'API request failed')
+    }).finally(() => !cancelled && setLoading(false))
     return () => { cancelled = true }
   }, [module, revision])
 
