@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Activity, AlertCircle, Banknote, Box, CheckCircle2, ChevronDown, CircleDollarSign, Command, Download, FileCheck2, Gauge, Layers3, Map, Menu, Moon, Plug, Search, Settings2, Sun, Truck, Users, X } from 'lucide-react'
-import { GoogleLiveMap } from './google-live-map'
+import { GoogleLiveMap } from './openstreet-live-map'
 
 type Module = 'Overview'|'Live Operations'|'Orders'|'Drivers'|'Applications'|'Service Areas'|'Pricing'|'Earnings'|'Integrations'|'Issues'|'Organization Settings'
 type ApiRecord = Record<string, unknown>
