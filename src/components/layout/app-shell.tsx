@@ -30,7 +30,7 @@ const products = [
 
 type OpenMenu = 'organization' | 'user' | 'notifications' | 'locale' | 'chat' | 'more' | 'customize' | 'shortcuts' | null
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, homeMode = false }: { children: React.ReactNode; homeMode?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const menusRef = useRef<HTMLElement>(null)
@@ -92,8 +92,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const toggleMenu = (menu: Exclude<OpenMenu, null>) => setOpenMenu((current) => current === menu ? null : menu)
 
-  return <div className={`app ${collapsed ? 'sidebar-collapsed' : ''}`}>
-    <aside className={mobile ? 'sidebar open' : 'sidebar'} aria-label="Primary navigation">
+  return <div className={`app ${collapsed ? 'sidebar-collapsed' : ''} ${homeMode ? 'dashboard-home' : ''}`}>
+    {!homeMode && <aside className={mobile ? 'sidebar open' : 'sidebar'} aria-label="Primary navigation">
       <div className="brand">
         <div className="logo"><Layers3 /></div>
         <div className="brand-copy"><strong>Droo.</strong><span>Operations</span></div>
@@ -118,15 +118,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="resource-filter"><Search />Filter resources...</div>
         <div className="resource-empty">{resourceTab === 'Fleets' ? <Users /> : resourceTab === 'Drivers' ? <Truck /> : <Car />}<strong>No {resourceTab.toLowerCase()} yet</strong><span>{resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`}</span></div>
       </footer>}
-    </aside>
-    {mobile && <button className="overlay" aria-label="Close navigation" onClick={() => setMobile(false)} />}
+    </aside>}
+    {!homeMode && mobile && <button className="overlay" aria-label="Close navigation" onClick={() => setMobile(false)} />}
 
     <section className="workspace">
       <header className="topbar console-navbar" ref={menusRef}>
         <div className="topbar-left">
-          <button className="mobile" onClick={() => setMobile((current) => !current)} aria-label={mobile ? 'Close navigation' : 'Open navigation'}>{mobile ? <X /> : <Menu />}</button>
-          <Link href="/overview" className="navbar-logo" aria-label="Droo home"><Layers3 /></Link>
-          <button className="desktop-sidebar-toggle" onClick={toggleCollapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><PanelLeft /></button>
+          {!homeMode && <button className="mobile" onClick={() => setMobile((current) => !current)} aria-label={mobile ? 'Close navigation' : 'Open navigation'}>{mobile ? <X /> : <Menu />}</button>}
+          <Link href="/" className="navbar-logo" aria-label="Droo home"><Layers3 /></Link>
+          {!homeMode && <button className="desktop-sidebar-toggle" onClick={toggleCollapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><PanelLeft /></button>}
           <nav className="product-navigation" aria-label="Products">
             {products.map(([name, href, Icon]) => <Link key={href} href={href} className={pathname === href ? 'active' : ''}><Icon />{name}</Link>)}
             <div className="nav-menu-wrap">
@@ -176,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="dropdown-rule" />
               <button className="dropdown-item selected"><Check />Droo Logistics</button>
               <div className="dropdown-rule" />
-              <Link className="dropdown-item" href="/overview" onClick={() => setOpenMenu(null)}><Gauge />Home</Link>
+              <Link className="dropdown-item" href="/" onClick={() => setOpenMenu(null)}><Gauge />Home</Link>
               <Link className="dropdown-item" href="/settings" onClick={() => setOpenMenu(null)}><Settings2 />Organization settings</Link>
             </div>}
           </div>

@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation'
+import { AppShell } from '@/components/layout/app-shell'
+import { OverviewPage } from '@/features/overview/overview-page'
 
 export default function HomePage() {
-  redirect('/overview')
+  return <AppShell homeMode><OverviewPage /></AppShell>
 }
