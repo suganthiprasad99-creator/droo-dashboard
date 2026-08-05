@@ -23,6 +23,8 @@ export function GoogleLiveMap({ rows, selected, onSelect }: { rows: ApiRecord[];
   const element = useRef<HTMLDivElement>(null)
   const map = useRef<google.maps.Map | null>(null)
   const markers = useRef(new Map<string, google.maps.Marker>())
+  const selectedRoute = useRef<google.maps.Polyline | null>(null)
+  const selectedRouteMarkers = useRef<google.maps.Marker[]>([])
   const fitted = useRef(false)
   const [error, setError] = useState('')
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
@@ -61,7 +63,45 @@ export function GoogleLiveMap({ rows, selected, onSelect }: { rows: ApiRecord[];
         } else { marker.setPosition({ lat, lng }); marker.setIcon(icon); marker.setMap(map.current) }
       })
       markers.current.forEach((marker, id) => { if (!visible.has(id)) { marker.setMap(null); markers.current.delete(id) } })
-      if (!fitted.current && !bounds.isEmpty()) { map.current.fitBounds(bounds, 70); fitted.current = true }
+      selectedRoute.current?.setMap(null)
+      selectedRoute.current = null
+      selectedRouteMarkers.current.forEach(marker => marker.setMap(null))
+      selectedRouteMarkers.current = []
+      const selectedRow = selected ? rows.find((row, index) => {
+        const driver = (row.driver || {}) as ApiRecord
+        return String(driver.id || row.id || index) === selected
+      }) : undefined
+      const routePositions = Array.isArray(selectedRow?.route_positions) ? selectedRow.route_positions as ApiRecord[] : []
+      const routePath = routePositions.flatMap(position => {
+        const lat = Number(position.latitude), lng = Number(position.longitude)
+        return Number.isFinite(lat) && Number.isFinite(lng) ? [{ lat, lng }] : []
+      })
+      if (routePath.length && map.current) {
+        const routeBounds = new google.maps.LatLngBounds()
+        routePath.forEach(position => routeBounds.extend(position))
+        if (routePath.length > 1) {
+          selectedRoute.current = new google.maps.Polyline({ map: map.current, path: routePath, strokeColor: '#ef6c28', strokeOpacity: .9, strokeWeight: 5 })
+        }
+        const endpointIndexes = routePath.length > 1 ? [0, routePath.length - 1] : [0]
+        selectedRouteMarkers.current = endpointIndexes.map((positionIndex, markerIndex) => new google.maps.Marker({
+          map: map.current,
+          position: routePath[positionIndex],
+          title: markerIndex === 0 ? 'Pickup' : 'Drop-off',
+          label: { text: markerIndex === 0 ? 'P' : 'D', color: '#ffffff', fontWeight: '700' },
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: markerIndex === 0 ? '#26845c' : '#ef6c28', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3 },
+        }))
+        map.current.fitBounds(routeBounds, 90)
+        if (routePath.length === 1) map.current.setZoom(16)
+      }
+      const selectedMarker = selected ? markers.current.get(selected) : undefined
+      const selectedPosition = selectedMarker?.getPosition()
+      if (selectedPosition && !routePath.length) {
+        map.current.panTo(selectedPosition)
+        if ((map.current.getZoom() || 0) < 15) map.current.setZoom(15)
+      } else if (!fitted.current && !bounds.isEmpty()) {
+        map.current.fitBounds(bounds, 70)
+        fitted.current = true
+      }
     }).catch(value => setError(value instanceof Error ? value.message : 'Google Maps failed to load'))
     return () => { active = false }
   }, [key, rows, selected, onSelect])

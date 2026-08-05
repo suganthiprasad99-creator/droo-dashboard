@@ -13,11 +13,15 @@ const demoRows: Partial<Record<ModuleName, ApiRecord[]>> = {
     { id: 'drv_demo_2', status: 'online', active_order_id: 'ord_demo_1002', driver: { id: 'drv_demo_2', name: 'Arun Prakash', phone: '+91 90000 10002' }, position: { latitude: 13.0604, longitude: 80.2496, recorded_at: new Date().toISOString(), heading_deg: 45 } },
   ],
   Orders: [
-    { id: 'ord_demo_1001', external_reference: 'DEMO-1001', status: 'assigned', assigned_driver: 'Naveen Kumar', price: '₹1,450.75', updated_at: new Date().toISOString() },
-    { id: 'ord_demo_1002', external_reference: 'DEMO-1002', status: 'published', assigned_driver: '—', price: '₹860.00', updated_at: new Date().toISOString() },
-    { id: 'ord_demo_1003', external_reference: 'DEMO-1003', status: 'delivered', assigned_driver: 'Arun Prakash', price: '₹1,120.00', updated_at: new Date().toISOString() },
+    { id: 'ord_demo_1001', external_reference: 'DEMO-1001', status: 'assigned', assigned_driver: 'Naveen Kumar', price: '₹1,450.75', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'T Nagar', city: 'Chennai', latitude: 13.0418, longitude: 80.2341 } }, { type: 'dropoff', address: { line1: 'Anna Nagar', city: 'Chennai', latitude: 13.085, longitude: 80.2101 } }] },
+    { id: 'ord_demo_1002', external_reference: 'DEMO-1002', status: 'published', assigned_driver: '—', price: '₹860.00', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Mylapore', city: 'Chennai', latitude: 13.0368, longitude: 80.2676 } }, { type: 'dropoff', address: { line1: 'Adyar', city: 'Chennai', latitude: 13.0067, longitude: 80.2572 } }] },
+    { id: 'ord_demo_1003', external_reference: 'DEMO-1003', status: 'delivered', assigned_driver: 'Arun Prakash', price: '₹1,120.00', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Kilpauk', city: 'Chennai', latitude: 13.0827, longitude: 80.2417 } }, { type: 'dropoff', address: { line1: 'Nungambakkam', city: 'Chennai', latitude: 13.0604, longitude: 80.2496 } }] },
   ],
-  Drivers: [{ id: 'drv_demo_1', name: 'Naveen Kumar', type: 'internal', status: 'online', phone: '+91 90000 10001' }, { id: 'drv_demo_2', name: 'Arun Prakash', type: 'solo', status: 'online', phone: '+91 90000 10002' }],
+  Drivers: [
+    { id: 'drv_demo_1', name: 'Naveen Kumar', type: 'internal', status: 'online', phone: '+91 90000 10001', vehicle_id: 'veh_demo_1', vehicle_registration: 'TN 01 DR 0010' },
+    { id: 'drv_demo_2', name: 'Arun Prakash', type: 'solo', status: 'online', phone: '+91 90000 10002', vehicle_id: 'veh_demo_2', vehicle_registration: 'TN 09 BK 4821' },
+    { id: 'drv_demo_3', name: 'Priya Sharma', type: 'internal', status: 'available', phone: '+91 90000 10003', vehicle_id: 'veh_demo_3', vehicle_registration: 'TN 22 CM 7654' },
+  ],
   Applications: [{ id: 'app_demo_1', name: 'Karthik S', status: 'pending_review', vehicle_type: 'Motorcycle', submitted_at: new Date().toISOString() }],
   'Service Areas': [{ id: 'area_demo_1', name: 'Chennai Central', status: 'active', type: 'polygon', drivers_online: 10 }],
   Pricing: [{ id: 'price_demo_1', name: 'Chennai Standard', status: 'active', base_price: '₹60', per_km: '₹14' }],
@@ -107,6 +111,11 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
     }
     load().catch(value => {
       if (cancelled) return
+      if (module === 'Orders') {
+        setRows([])
+        setError(value instanceof Error ? value.message : 'Orders API request failed')
+        return
+      }
       if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
         setRows(fallbackRows(module))
         setError('')
@@ -117,5 +126,5 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
     return () => { cancelled = true }
   }, [module, revision])
 
-  return { rows, loading, error }
+  return { rows, loading, error, refresh: () => setRevision(value => value + 1) }
 }

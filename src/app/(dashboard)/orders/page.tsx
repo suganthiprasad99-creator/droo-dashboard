@@ -1,3 +1,3 @@
-import { RecordsPage } from '@/features/records/records-page'
+import { OrdersPage } from '@/features/orders/orders-page'
 
-export default function Page() { return <RecordsPage module="Orders" /> }
+export default function Page() { return <OrdersPage /> }

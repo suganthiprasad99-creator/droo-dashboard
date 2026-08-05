@@ -1,3 +1,3 @@
-import { RecordsPage } from '@/features/records/records-page'
+import { redirect } from 'next/navigation'
 
-export default function Page() { return <RecordsPage module="Pricing" /> }
+export default function Page() { redirect('/fleet-ops/service-rates') }

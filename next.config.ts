@@ -2,7 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    return [{ source: '/v1/:path*', destination: 'http://localhost:18080/v1/:path*' }]
+    return [
+      { source: '/v1/:path*', destination: 'http://localhost:18080/v1/:path*' },
+      { source: '/int/v1/:path*', destination: 'http://localhost:8000/int/v1/:path*' },
+    ]
   },
 };
 
