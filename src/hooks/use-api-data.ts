@@ -90,12 +90,19 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
       if (!token) throw new Error('Sign in to load live API data.')
       const headers = { Authorization: `Bearer ${token}` }
       if (module === 'Overview') {
-        const [orders, drivers, earnings] = await Promise.all(['/admin/orders', '/admin/drivers', '/admin/earnings'].map(async endpoint => {
+        const [orders, drivers, earnings, liveDrivers] = await Promise.all(['/admin/orders?limit=100', '/admin/drivers?limit=100', '/admin/earnings?limit=100', '/admin/live-drivers'].map(async endpoint => {
           const response = await fetch(`/v1${endpoint}`, { headers })
           if (!response.ok) throw new Error(`Overview API request failed (${response.status})`)
           return response.json()
         }))
-        if (!cancelled) setRows([...(orders.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'order' })), ...(drivers.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'driver' })), ...(earnings.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'earning' }))])
+        const liveRows: ApiRecord[] = Array.isArray(liveDrivers) ? liveDrivers : liveDrivers.data || []
+        const onlineIDs = new Set(liveRows.map((row) => String(((row.driver || {}) as ApiRecord).id || '')))
+        if (!cancelled) setRows([
+          ...(orders.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'order' })),
+          ...(drivers.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'driver', online: onlineIDs.has(String(x.id || '')) })),
+          ...(earnings.data || []).map((x: ApiRecord) => ({ ...x, __kind: 'earning' })),
+          ...liveRows.map((x: ApiRecord) => ({ ...x, __kind: 'live_driver' })),
+        ])
         return
       }
       const path = modules[module].apiPath
