@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  BarChart3, Bell, BriefcaseBusiness, Calculator, Car, Check, ChevronDown, Code2, Gauge,
-  Globe2, HelpCircle, Inbox,
-  Keyboard, Layers3, LogOut, Menu, MessageSquare, MoreHorizontal, Moon, PanelLeft,
-  Plus, Radio, Search, Settings2, Shield, SlidersHorizontal, Sun, Truck, UserRound,
-  Users, Workflow, Wrench, X,
+  BarChart3, Bell, BookOpen, BriefcaseBusiness, Calculator, Car, Check, ChevronDown, Code2, CreditCard, Gauge,
+  FileText, Globe2, HelpCircle, IdCard, Inbox,
+  CalendarDays, Home, Keyboard, KeyRound, Layers3, LogOut, Menu, MessageSquare, MoreHorizontal, Moon, Network, Package,
+  Landmark, PanelLeft, Plus, Radio, ReceiptText, Rocket, Search, Settings2, Shield, SlidersHorizontal, Store,
+  Sun, Truck, Unplug, UserRound, Users, UsersRound, Webhook, Workflow, Wrench, X,
 } from 'lucide-react'
 
 const sidebarGroups = [
-  { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/live-operations'], ['Scheduler', '/live-operations'], ['Order Config', '/settings'], ['Service Rates', '/pricing']] },
+  { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/live-operations'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
   { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/drivers'], ['Fleets', '/drivers'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/earnings'], ['Issues', '/issues']] },
   { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues'], ['Schedules', '/issues'], ['Work Orders', '/issues'], ['Maintenances', '/issues'], ['Equipment', '/issues'], ['Parts', '/issues']] },
   { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations'], ['Fuel Providers', '/integrations'], ['Devices', '/integrations'], ['Sensors', '/integrations'], ['Events', '/integrations']] },
@@ -21,11 +21,50 @@ const sidebarGroups = [
 ] as const
 
 const products = [
-  ['Fleet-Ops', '/live-operations', Workflow],
-  ['Storefront', '/orders', BriefcaseBusiness],
-  ['Ledger', '/earnings', Calculator],
-  ['IAM', '/settings', Shield],
-  ['Developers', '/integrations', Code2],
+  ['Fleet-Ops', '/live-operations', Workflow, 'Operations'],
+  ['Storefront', '/storefront', BriefcaseBusiness, 'Storefront'],
+  ['Ledger', '/ledger', Calculator, 'Ledger'],
+  ['IAM', '/iam', Shield, 'IAM'],
+  ['Developers', '/developers', Code2, 'Developers'],
+] as const
+
+const storefrontItems = [
+  ['Dashboard', '/storefront', Home],
+  ['Products', '/storefront?view=products', Package],
+  ['Catalogs', '/storefront?view=catalogs', BookOpen],
+  ['Customers', '/storefront?view=customers', UsersRound],
+  ['Orders', '/orders', ReceiptText],
+  ['Networks', '/storefront?view=networks', Network],
+  ['Food Trucks', '/storefront?view=food-trucks', Truck],
+  ['Promotions', '/storefront?view=promotions', Radio],
+  ['Settings', '/storefront?view=settings', Settings2],
+  ['Launch App', '/storefront?view=launch', Rocket],
+] as const
+
+const ledgerItems = [
+  ['Dashboard', '/ledger', BarChart3],
+  ['Billing', '/ledger?view=billing', ReceiptText],
+  ['Payments', '/ledger?view=payments', CreditCard],
+  ['Accounting', '/ledger?view=accounting', Calculator],
+  ['Reports', '/earnings', Landmark],
+  ['Settings', '/ledger?view=settings', Settings2],
+] as const
+
+const iamItems = [
+  ['Dashboard', '/iam', Home],
+  ['Users', '/iam?view=users', IdCard],
+  ['Groups', '/iam?view=groups', UsersRound],
+  ['Roles', '/iam?view=roles', ReceiptText],
+  ['Policies', '/iam?view=policies', Shield],
+] as const
+
+const developerItems = [
+  ['Dashboard', '/developers', Home],
+  ['API Keys', '/developers?view=api-keys', KeyRound],
+  ['Webhooks', '/integrations', Webhook],
+  ['WebSockets', '/developers?view=websockets', Unplug],
+  ['Logs', '/developers?view=logs', FileText],
+  ['Events', '/developers?view=events', CalendarDays],
 ] as const
 
 type OpenMenu = 'organization' | 'user' | 'notifications' | 'locale' | 'chat' | 'more' | 'customize' | 'shortcuts' | null
@@ -41,6 +80,9 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [locale, setLocale] = useState('English')
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(null)
+  const initialProduct = pathname === '/storefront' ? 'Storefront' : pathname === '/ledger' ? 'Ledger' : pathname === '/iam' ? 'IAM' : pathname === '/developers' ? 'Developers' : 'Fleet-Ops'
+  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
+  const [activeProduct, setActiveProduct] = useState(initialProduct)
   const [resourceTab, setResourceTab] = useState<'Fleets' | 'Drivers' | 'Vehicles'>('Fleets')
 
   useEffect(() => {
@@ -99,17 +141,73 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         <div className="brand-copy"><strong>Droo.</strong><span>Operations</span></div>
         <button className="mobile-close" onClick={() => setMobile(false)} aria-label="Close navigation"><X /></button>
       </div>
+      {activeProduct === 'Storefront' ? <>
+        <div className="storefront-sidebar-actions">
+          <button className="store-selector"><Store /><span>Product Stationery Store</span><ChevronDown /></button>
+          <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Storefront..." /><kbd>Cmd K</kbd></label>
+        </div>
+        <nav className="storefront-sidebar-nav" aria-label="Storefront navigation">
+          {storefrontItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+            const isActive = label === 'Dashboard' && pathname === '/storefront'
+            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{['Products', 'Promotions', 'Settings'].includes(label) && <ChevronDown />}</Link>
+          })}
+        </nav>
+        <footer className="storefront-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
+      </> : activeProduct === 'Ledger' ? <>
+        <div className="ledger-sidebar-actions">
+          <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Ledger..." /><kbd>Cmd K</kbd></label>
+        </div>
+        <nav className="ledger-sidebar-nav" aria-label="Ledger navigation">
+          {ledgerItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+            const isActive = label === 'Dashboard' && pathname === '/ledger'
+            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{label !== 'Dashboard' && <ChevronDown />}</Link>
+          })}
+        </nav>
+        <footer className="ledger-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
+      </> : activeProduct === 'IAM' ? <>
+        <div className="iam-sidebar-actions">
+          <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search IAM..." /><kbd>Cmd K</kbd></label>
+        </div>
+        <nav className="iam-sidebar-nav" aria-label="IAM navigation">
+          {iamItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+            const isActive = label === 'Dashboard' && pathname === '/iam'
+            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{label === 'Users' && <ChevronDown />}</Link>
+          })}
+        </nav>
+        <footer className="iam-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
+      </> : activeProduct === 'Developers' ? <>
+        <div className="developers-sidebar-actions">
+          <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Developers..." /><kbd>Cmd K</kbd></label>
+        </div>
+        <nav className="developers-sidebar-nav" aria-label="Developers navigation">
+          {developerItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+            const isActive = label === 'Dashboard' && pathname === '/developers'
+            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span></Link>
+          })}
+        </nav>
+        <footer className="developers-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
+      </> : <>
       <div className="fleet-sidebar-actions">
         <Link href="/orders" className="create-order-action" onClick={() => setMobile(false)}><Plus /><span>Create new order</span></Link>
         <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Fleet-Ops..." /><kbd>Cmd K</kbd></label>
       </div>
       <nav className="fleet-sidebar-nav">
         {currentSidebarGroup ? <>
-          <button className="sidebar-back" onClick={() => { setCurrentSidebarGroup(null); setSidebarSearch('') }}><ChevronDown /><span>{currentSidebarGroup}</span></button>
+          <button className="sidebar-back" type="button" aria-label={`Back from ${currentSidebarGroup}`} onClick={() => { setCurrentSidebarGroup(null); setSidebarSearch('') }}><ChevronDown /><span>{currentSidebarGroup}</span></button>
           <div className="nested-sidebar-items">{sidebarGroups.find((group) => group.name === currentSidebarGroup)?.items.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href]) => <Link key={label} href={href} className={pathname === href ? 'active' : ''} aria-current={pathname === href ? 'page' : undefined} onClick={() => setMobile(false)}><span>{label}</span></Link>)}</div>
-        </> : sidebarGroups.filter(({ name, items }) => !sidebarSearch || name.toLowerCase().includes(sidebarSearch.toLowerCase()) || items.some(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase()))).map(({ name, icon: Icon, items }) => {
-          const isActive = items.some(([, route]) => route === pathname)
-          return <button key={name} className={isActive ? 'group-trigger active' : 'group-trigger'} aria-current={isActive ? 'page' : undefined} onClick={() => { setCurrentSidebarGroup(name); setSidebarSearch('') }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronDown /></button>
+        </> : sidebarGroups.filter(({ name, items }) => !sidebarSearch || name.toLowerCase().includes(sidebarSearch.toLowerCase()) || items.some(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase()))).map(({ name, icon: Icon }) => {
+          const isActive = activeSidebarGroup === name
+          return <button key={name} className={isActive ? 'group-trigger active' : 'group-trigger'} aria-current={isActive ? 'page' : undefined} onClick={() => {
+            setActiveSidebarGroup(name)
+            setSidebarSearch('')
+            if (name === 'Operations') {
+              setCurrentSidebarGroup('Operations')
+              setMobile(false)
+              router.push('/live-operations')
+              return
+            }
+            setCurrentSidebarGroup(name)
+          }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronDown /></button>
         })}
       </nav>
       {(!currentSidebarGroup || currentSidebarGroup === 'Operations') && <footer className="fleet-sidebar-footer">
@@ -118,6 +216,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         <div className="resource-filter"><Search />Filter resources...</div>
         <div className="resource-empty">{resourceTab === 'Fleets' ? <Users /> : resourceTab === 'Drivers' ? <Truck /> : <Car />}<strong>No {resourceTab.toLowerCase()} yet</strong><span>{resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`}</span></div>
       </footer>}
+      </>}
     </aside>}
     {!homeMode && mobile && <button className="overlay" aria-label="Close navigation" onClick={() => setMobile(false)} />}
 
@@ -128,12 +227,12 @@ export function AppShell({ children, homeMode = false }: { children: React.React
           <Link href="/" className="navbar-logo" aria-label="Droo home"><Layers3 /></Link>
           {!homeMode && <button className="desktop-sidebar-toggle" onClick={toggleCollapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><PanelLeft /></button>}
           <nav className="product-navigation" aria-label="Products">
-            {products.map(([name, href, Icon]) => <Link key={href} href={href} className={pathname === href ? 'active' : ''}><Icon />{name}</Link>)}
+            {products.map(([name, href, Icon, sidebarGroup]) => <Link key={name} href={href} className={activeProduct === name ? 'active' : ''} onClick={() => { setActiveProduct(name); setActiveSidebarGroup(sidebarGroup); setCurrentSidebarGroup(null); setSidebarSearch(''); setMobile(false) }}><Icon />{name}</Link>)}
             <div className="nav-menu-wrap">
               <button aria-label="More products" aria-expanded={openMenu === 'more'} onClick={() => toggleMenu('more')}><MoreHorizontal /></button>
               {openMenu === 'more' && <div className="nav-dropdown product-dropdown" role="menu">
                 <div className="dropdown-heading"><strong>Applications</strong></div>
-                {products.map(([name, href, Icon]) => <Link key={href} className="dropdown-item" href={href} onClick={() => setOpenMenu(null)}><Icon />{name}</Link>)}
+                {products.map(([name, href, Icon, sidebarGroup]) => <Link key={name} className="dropdown-item" href={href} onClick={() => { setActiveProduct(name); setActiveSidebarGroup(sidebarGroup); setCurrentSidebarGroup(null); setSidebarSearch(''); setMobile(false); setOpenMenu(null) }}><Icon />{name}</Link>)}
               </div>}
             </div>
             <div className="nav-menu-wrap">
