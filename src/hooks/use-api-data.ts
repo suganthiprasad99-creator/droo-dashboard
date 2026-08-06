@@ -13,14 +13,23 @@ const demoRows: Partial<Record<ModuleName, ApiRecord[]>> = {
     { id: 'drv_demo_2', status: 'online', active_order_id: 'ord_demo_1002', driver: { id: 'drv_demo_2', name: 'Arun Prakash', phone: '+91 90000 10002' }, position: { latitude: 13.0604, longitude: 80.2496, recorded_at: new Date().toISOString(), heading_deg: 45 } },
   ],
   Orders: [
-    { id: 'ord_demo_1001', external_reference: 'DEMO-1001', status: 'assigned', assigned_driver: 'Naveen Kumar', price: '₹1,450.75', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'T Nagar', city: 'Chennai', latitude: 13.0418, longitude: 80.2341 } }, { type: 'dropoff', address: { line1: 'Anna Nagar', city: 'Chennai', latitude: 13.085, longitude: 80.2101 } }] },
-    { id: 'ord_demo_1002', external_reference: 'DEMO-1002', status: 'published', assigned_driver: '—', price: '₹860.00', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Mylapore', city: 'Chennai', latitude: 13.0368, longitude: 80.2676 } }, { type: 'dropoff', address: { line1: 'Adyar', city: 'Chennai', latitude: 13.0067, longitude: 80.2572 } }] },
-    { id: 'ord_demo_1003', external_reference: 'DEMO-1003', status: 'delivered', assigned_driver: 'Arun Prakash', price: '₹1,120.00', updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Kilpauk', city: 'Chennai', latitude: 13.0827, longitude: 80.2417 } }, { type: 'dropoff', address: { line1: 'Nungambakkam', city: 'Chennai', latitude: 13.0604, longitude: 80.2496 } }] },
+    { id: 'ord_demo_1001', external_reference: 'DEMO-1001', status: 'assigned', service_type: 'Standard Delivery', customer_name: 'Aarav Stores', assigned_driver: 'Naveen Kumar · TN 01 DR 0010', price: '₹1,450.75', sla: 'On time', sla_compliant: true, updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'T Nagar', city: 'Chennai', latitude: 13.0418, longitude: 80.2341 } }, { type: 'dropoff', address: { line1: 'Anna Nagar', city: 'Chennai', latitude: 13.085, longitude: 80.2101 } }] },
+    { id: 'ord_demo_1002', external_reference: 'DEMO-1002', status: 'published', service_type: 'Express Delivery', customer_name: 'Meera Textiles', assigned_driver: '—', price: '₹860.00', sla: 'Awaiting assignment', sla_compliant: true, updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Mylapore', city: 'Chennai', latitude: 13.0368, longitude: 80.2676 } }, { type: 'dropoff', address: { line1: 'Adyar', city: 'Chennai', latitude: 13.0067, longitude: 80.2572 } }] },
+    { id: 'ord_demo_1003', external_reference: 'DEMO-1003', status: 'delivered', service_type: 'Standard Delivery', customer_name: 'Kavin Electronics', assigned_driver: 'Arun Prakash · TN 09 BK 4821', price: '₹1,120.00', sla: 'Completed on time', sla_compliant: true, updated_at: new Date().toISOString(), stops: [{ type: 'pickup', address: { line1: 'Kilpauk', city: 'Chennai', latitude: 13.0827, longitude: 80.2417 } }, { type: 'dropoff', address: { line1: 'Nungambakkam', city: 'Chennai', latitude: 13.0604, longitude: 80.2496 } }] },
   ],
   Drivers: [
     { id: 'drv_demo_1', name: 'Naveen Kumar', type: 'internal', status: 'online', phone: '+91 90000 10001', vehicle_id: 'veh_demo_1', vehicle_registration: 'TN 01 DR 0010' },
     { id: 'drv_demo_2', name: 'Arun Prakash', type: 'solo', status: 'online', phone: '+91 90000 10002', vehicle_id: 'veh_demo_2', vehicle_registration: 'TN 09 BK 4821' },
     { id: 'drv_demo_3', name: 'Priya Sharma', type: 'internal', status: 'available', phone: '+91 90000 10003', vehicle_id: 'veh_demo_3', vehicle_registration: 'TN 22 CM 7654' },
+  ],
+  Vehicles: [
+    { id: 'veh_demo_1', registration_number: 'TN 01 DR 0010', type: 'motorcycle', status: 'active', assigned_driver: 'Naveen Kumar' },
+    { id: 'veh_demo_2', registration_number: 'TN 09 BK 4821', type: 'scooter', status: 'active', assigned_driver: 'Arun Prakash' },
+    { id: 'veh_demo_3', registration_number: 'TN 22 CM 7654', type: 'motorcycle', status: 'available', assigned_driver: 'Priya Sharma' },
+  ],
+  Fleets: [
+    { id: 'flt_demo_1', name: 'Chennai Central Fleet', status: 'active', drivers: 2, vehicles: 2, service_area: 'Chennai Central' },
+    { id: 'flt_demo_2', name: 'South Chennai Fleet', status: 'active', drivers: 1, vehicles: 1, service_area: 'South Chennai' },
   ],
   Applications: [{ id: 'app_demo_1', name: 'Karthik S', status: 'pending_review', vehicle_type: 'Motorcycle', submitted_at: new Date().toISOString() }],
   'Service Areas': [{ id: 'area_demo_1', name: 'Chennai Central', status: 'active', type: 'polygon', drivers_online: 10 }],
@@ -114,13 +123,38 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
       const response = await fetch(`/v1${path}`, { headers })
       if (!response.ok) throw new Error(`API request failed (${response.status})`)
       const value = await response.json()
-      if (!cancelled) setRows(Array.isArray(value) ? value : value.data || [])
+      let records: ApiRecord[] = Array.isArray(value) ? value : value.data || []
+      if (module === 'Orders' && !records.length && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') records = fallbackRows('Orders')
+      if (!cancelled) setRows(module === 'Vehicles' ? records.map((driver) => {
+        const vehicle = driver.vehicle && typeof driver.vehicle === 'object' ? driver.vehicle as ApiRecord : {}
+        return {
+          id: vehicle.id || driver.vehicle_id,
+          registration_number: vehicle.registration_number || driver.vehicle_registration,
+          type: vehicle.type || driver.vehicle_type,
+          status: vehicle.status || driver.status,
+          assigned_driver: driver.name,
+          driver_id: driver.id,
+        }
+      }).filter((vehicle) => vehicle.id || vehicle.registration_number) : module === 'Fleets' ? Array.from(records.reduce((fleets, driver) => {
+        const fleet = driver.fleet && typeof driver.fleet === 'object' ? driver.fleet as ApiRecord : {}
+        const id = String(fleet.id || driver.fleet_id || 'unassigned')
+        const current = fleets.get(id) || { id, name: fleet.name || driver.fleet_name || 'Unassigned', status: fleet.status || 'active', drivers: 0, vehicles: 0, service_area: fleet.service_area || driver.service_area || '—' }
+        current.drivers = Number(current.drivers) + 1
+        if (driver.vehicle || driver.vehicle_id) current.vehicles = Number(current.vehicles) + 1
+        fleets.set(id, current)
+        return fleets
+      }, new Map<string, ApiRecord>()).values()) : records)
     }
     load().catch(value => {
       if (cancelled) return
       if (module === 'Orders') {
-        setRows([])
-        setError(value instanceof Error ? value.message : 'Orders API request failed')
+        if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
+          setRows(fallbackRows('Orders'))
+          setError('')
+        } else {
+          setRows([])
+          setError(value instanceof Error ? value.message : 'Orders API request failed')
+        }
         return
       }
       if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {

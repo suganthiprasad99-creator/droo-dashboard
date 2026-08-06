@@ -5,6 +5,8 @@ export const modules: Record<ModuleName, ModuleConfig> = {
   'Live Operations': { name: 'Live Operations', description: 'Track available riders, active deliveries and stale locations.', apiPath: '/admin/live-drivers' },
   Orders: { name: 'Orders', description: 'Create, dispatch and monitor every delivery.', apiPath: '/admin/orders', actionLabel: 'New order' },
   Drivers: { name: 'Drivers', description: 'Manage marketplace and salaried internal riders.', apiPath: '/admin/drivers', actionLabel: 'Invite driver' },
+  Vehicles: { name: 'Vehicles', description: 'View registered vehicles and their assigned drivers.', apiPath: '/admin/drivers' },
+  Fleets: { name: 'Fleets', description: 'Organize drivers and vehicles into operational groups.', apiPath: '/admin/drivers', actionLabel: 'New fleet' },
   Applications: { name: 'Applications', description: 'Review rider profiles, vehicles and documents.', apiPath: '/admin/driver-applications' },
   'Service Areas': { name: 'Service Areas', description: 'Define operational coverage with polygon boundaries.', apiPath: '/admin/service-areas', actionLabel: 'New service area' },
   Pricing: { name: 'Pricing', description: 'Manage delivery pricing and rider revenue share.', apiPath: '/admin/pricing-rules', actionLabel: 'New pricing rule' },
