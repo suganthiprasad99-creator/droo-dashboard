@@ -1,3 +1,3 @@
-import { LiveOperationsPage } from '@/features/live-operations/live-operations-page'
+import { redirect } from 'next/navigation'
 
-export default function Page() { return <LiveOperationsPage /> }
+export default function Page() { redirect('/orchestrator') }

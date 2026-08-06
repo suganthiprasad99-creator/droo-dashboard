@@ -2,111 +2,137 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, MapPin } from 'lucide-react'
+import type { Layer, Map as LeafletMap } from 'leaflet'
 
 type ApiRecord = Record<string, unknown>
+type MapCommand = { type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type'; nonce: number }
 
-let mapsPromise: Promise<void> | null = null
-function loadMaps(key: string) {
-  if (typeof google !== 'undefined' && google.maps) return Promise.resolve()
-  if (!mapsPromise) mapsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`
-    script.async = true
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('Google Maps failed to load'))
-    document.head.appendChild(script)
-  })
-  return mapsPromise
-}
+const defaultCenter = { lat: 11.1271, lng: 78.6569 }
 
-export function GoogleLiveMap({ rows, selected, onSelect }: { rows: ApiRecord[]; selected: string | null; onSelect: (id: string) => void }) {
+export function GoogleLiveMap({ rows, selected, onSelect, command, markerStyle = 'arrow' }: { rows: ApiRecord[]; selected: string | null; onSelect: (id: string) => void; command?: MapCommand; markerStyle?: 'arrow' | 'truck' }) {
   const element = useRef<HTMLDivElement>(null)
-  const map = useRef<google.maps.Map | null>(null)
-  const markers = useRef(new Map<string, google.maps.Marker>())
-  const selectedRoute = useRef<google.maps.Polyline | null>(null)
-  const selectedRouteMarkers = useRef<google.maps.Marker[]>([])
-  const fitted = useRef(false)
+  const map = useRef<LeafletMap | null>(null)
+  const baseLayer = useRef<Layer | null>(null)
+  const pointBounds = useRef<[number, number][]>([])
+  const alternateTiles = useRef(false)
   const [error, setError] = useState('')
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+
+  const invalidateMap = (instance: LeafletMap | null) => {
+    if (!instance || map.current !== instance || !instance.getContainer().isConnected) return
+    instance.invalidateSize({ animate: false, pan: false })
+  }
 
   useEffect(() => {
-    if (!key || !element.current) return
+    if (!element.current) return
     let active = true
-    loadMaps(key).then(() => {
+    setError('')
+    import('leaflet').then(L => {
       if (!active || !element.current) return
-      if (!map.current) map.current = new google.maps.Map(element.current, {
-        center: { lat: 13.0604, lng: 80.2496 }, zoom: 12, mapTypeControl: false,
-        streetViewControl: false, fullscreenControl: true, gestureHandling: 'greedy',
+      const instance = L.map(element.current, {
+        center: defaultCenter,
+        zoom: 7,
+        zoomControl: false,
+        attributionControl: true,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
       })
-      const bounds = new google.maps.LatLngBounds()
-      const visible = new Set<string>()
+      map.current = instance
+      baseLayer.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(instance)
+      const bounds: [number, number][] = []
       rows.forEach((row, index) => {
         const driver = (row.driver || {}) as ApiRecord
         const position = (row.position || {}) as ApiRecord
         const id = String(driver.id || row.id || index)
         const lat = Number(position.latitude), lng = Number(position.longitude)
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
-        visible.add(id); bounds.extend({ lat, lng })
+        bounds.push([lat, lng])
+        const isSelected = selected === id
         const recorded = new Date(String(position.recorded_at || 0)).getTime()
         const stale = !recorded || Date.now() - recorded > 120_000
-        const icon: google.maps.Symbol = {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          rotation: Number(position.heading_deg || 0), scale: selected === id ? 7 : 6,
-          fillColor: stale ? '#73766f' : selected === id ? '#ef6c28' : '#26845c',
-          fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2,
-        }
-        let marker = markers.current.get(id)
-        if (!marker) {
-          marker = new google.maps.Marker({ map: map.current, position: { lat, lng }, title: String(driver.name || 'Driver'), icon })
-          marker.addListener('click', () => onSelect(id))
-          markers.current.set(id, marker)
-        } else { marker.setPosition({ lat, lng }); marker.setIcon(icon); marker.setMap(map.current) }
+        const color = stale ? '#73766f' : isSelected ? '#ef6c28' : '#26845c'
+        const size = isSelected ? 22 : 18
+        const heading = Number(position.heading_deg || 0)
+        const truckColor = stale ? '#858984' : isSelected ? '#f97316' : '#16a34a'
+        const markerHtml = markerStyle === 'truck'
+          ? `<svg viewBox="0 0 34 20" width="${isSelected ? 34 : 30}" height="${isSelected ? 20 : 18}" aria-hidden="true" style="display:block;filter:drop-shadow(0 1px 1px white) drop-shadow(0 2px 2px #0005)"><rect x="2" y="4" width="19" height="10" rx="1.5" fill="${truckColor}"/><path d="M21 7h6l5 5v2H21z" fill="${truckColor}"/><path d="M23 8h3.5l3 3H23z" fill="#dff4ff"/><rect x="4" y="6" width="14" height="2" rx="1" fill="#ffffff70"/><circle cx="9" cy="15" r="3" fill="#30332f"/><circle cx="9" cy="15" r="1.2" fill="#d7d9d5"/><circle cx="26" cy="15" r="3" fill="#30332f"/><circle cx="26" cy="15" r="1.2" fill="#d7d9d5"/></svg>`
+          : `<span style="display:block;width:0;height:0;border-left:${size / 2}px solid transparent;border-right:${size / 2}px solid transparent;border-bottom:${size}px solid ${color};filter:drop-shadow(0 0 1px white) drop-shadow(0 2px 3px #0006);transform:rotate(${heading}deg)"></span>`
+        const iconWidth = markerStyle === 'truck' ? (isSelected ? 34 : 30) : size
+        const iconHeight = markerStyle === 'truck' ? (isSelected ? 20 : 18) : size
+        const icon = L.divIcon({ className: `live-map-vehicle-marker ${markerStyle === 'truck' ? 'truck-marker' : ''}`, html: markerHtml, iconSize: [iconWidth, iconHeight], iconAnchor: [iconWidth / 2, iconHeight / 2] })
+        L.marker([lat, lng], { icon, title: String(driver.name || 'Driver') }).on('click', () => onSelect(id)).addTo(instance)
       })
-      markers.current.forEach((marker, id) => { if (!visible.has(id)) { marker.setMap(null); markers.current.delete(id) } })
-      selectedRoute.current?.setMap(null)
-      selectedRoute.current = null
-      selectedRouteMarkers.current.forEach(marker => marker.setMap(null))
-      selectedRouteMarkers.current = []
-      const selectedRow = selected ? rows.find((row, index) => {
-        const driver = (row.driver || {}) as ApiRecord
-        return String(driver.id || row.id || index) === selected
-      }) : undefined
-      const routePositions = Array.isArray(selectedRow?.route_positions) ? selectedRow.route_positions as ApiRecord[] : []
-      const routePath = routePositions.flatMap(position => {
-        const lat = Number(position.latitude), lng = Number(position.longitude)
-        return Number.isFinite(lat) && Number.isFinite(lng) ? [{ lat, lng }] : []
-      })
-      if (routePath.length && map.current) {
-        const routeBounds = new google.maps.LatLngBounds()
-        routePath.forEach(position => routeBounds.extend(position))
-        if (routePath.length > 1) {
-          selectedRoute.current = new google.maps.Polyline({ map: map.current, path: routePath, strokeColor: '#ef6c28', strokeOpacity: .9, strokeWeight: 5 })
-        }
-        const endpointIndexes = routePath.length > 1 ? [0, routePath.length - 1] : [0]
-        selectedRouteMarkers.current = endpointIndexes.map((positionIndex, markerIndex) => new google.maps.Marker({
-          map: map.current,
-          position: routePath[positionIndex],
-          title: markerIndex === 0 ? 'Pickup' : 'Drop-off',
-          label: { text: markerIndex === 0 ? 'P' : 'D', color: '#ffffff', fontWeight: '700' },
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: markerIndex === 0 ? '#26845c' : '#ef6c28', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3 },
-        }))
-        map.current.fitBounds(routeBounds, 90)
-        if (routePath.length === 1) map.current.setZoom(16)
-      }
-      const selectedMarker = selected ? markers.current.get(selected) : undefined
-      const selectedPosition = selectedMarker?.getPosition()
-      if (selectedPosition && !routePath.length) {
-        map.current.panTo(selectedPosition)
-        if ((map.current.getZoom() || 0) < 15) map.current.setZoom(15)
-      } else if (!fitted.current && !bounds.isEmpty()) {
-        map.current.fitBounds(bounds, 70)
-        fitted.current = true
-      }
-    }).catch(value => setError(value instanceof Error ? value.message : 'Google Maps failed to load'))
-    return () => { active = false }
-  }, [key, rows, selected, onSelect])
 
-  if (!key) return <div className="map-setup"><MapPin/><strong>Google Maps key required</strong><span>Add a browser-restricted key to <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>.</span></div>
-  if (error) return <div className="map-setup"><AlertCircle/><strong>{error}</strong><span>Check the key restrictions, billing, and Maps JavaScript API.</span></div>
-  return <div ref={element} className="google-map" aria-label="Live driver locations on Google Maps" />
+      const selectedRow = selected ? rows.find((row, index) => String(((row.driver || {}) as ApiRecord).id || row.id || index) === selected) : undefined
+      const plannedPositions = Array.isArray(selectedRow?.planned_route_positions) ? selectedRow.planned_route_positions as ApiRecord[] : []
+      const actualPositions = Array.isArray(selectedRow?.actual_route_positions) ? selectedRow.actual_route_positions as ApiRecord[] : []
+      const routePositions = Array.isArray(selectedRow?.route_positions) ? selectedRow.route_positions as ApiRecord[] : []
+      const toRoute = (positions: ApiRecord[]) => positions.flatMap(position => {
+        const lat = Number(position.latitude), lng = Number(position.longitude)
+        return Number.isFinite(lat) && Number.isFinite(lng) ? [[lat, lng] as [number, number]] : []
+      })
+      const plannedRoute = toRoute(plannedPositions)
+      const actualRoute = toRoute(actualPositions)
+      const route = actualRoute.length ? actualRoute : toRoute(routePositions)
+      if (plannedRoute.length > 1) L.polyline(plannedRoute, { color: '#3978f6', weight: 4, opacity: .9, dashArray: '9 8' }).addTo(instance)
+      if (route.length) {
+        L.polyline(route, { color: '#ef6c28', weight: 5, opacity: .9 }).addTo(instance)
+        const markerRoute = plannedRoute.length ? plannedRoute : route
+        const endpoints = markerRoute.length > 1 ? [markerRoute[0], markerRoute[markerRoute.length - 1]] : [markerRoute[0]]
+        endpoints.forEach((point, index) => {
+          const label = index === 0 ? 'P' : 'D'
+          const color = index === 0 ? '#26845c' : '#ef6c28'
+          const icon = L.divIcon({ className: 'live-map-stop-marker', html: `<span style="display:grid;place-items:center;width:25px;height:25px;border:2px solid white;border-radius:50%;background:${color};color:white;font:700 11px sans-serif;box-shadow:0 2px 6px #0005">${label}</span>`, iconSize: [25, 25], iconAnchor: [12, 12] })
+          L.marker(point, { icon, title: index === 0 ? 'Pickup' : 'Drop-off' }).addTo(instance)
+        })
+        instance.fitBounds(L.latLngBounds([...plannedRoute, ...route]), { padding: [60, 60], maxZoom: 15, animate: false })
+      } else if (selectedRow) {
+        const selectedPosition = (selectedRow.position || {}) as ApiRecord
+        const selectedLat = Number(selectedPosition.latitude), selectedLng = Number(selectedPosition.longitude)
+        if (Number.isFinite(selectedLat) && Number.isFinite(selectedLng)) instance.setView([selectedLat, selectedLng], 15, { animate: false })
+        else if (bounds.length) instance.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 13, animate: false })
+      } else if (bounds.length) instance.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 13, animate: false })
+      pointBounds.current = bounds
+      requestAnimationFrame(() => active && invalidateMap(instance))
+    }).catch(value => active && setError(value instanceof Error ? value.message : 'Map failed to load'))
+    return () => {
+      active = false
+      const instance = map.current
+      map.current = null
+      baseLayer.current = null
+      pointBounds.current = []
+      if (instance) {
+        instance.stop()
+        instance.off()
+        instance.remove()
+      }
+    }
+  }, [rows, selected, onSelect, markerStyle])
+
+  useEffect(() => {
+    const instance = map.current
+    if (!instance || !command) return
+    if (command.type === 'zoom-in') instance.zoomIn()
+    if (command.type === 'zoom-out') instance.zoomOut()
+    if (command.type === 'locate') {
+      import('leaflet').then(L => pointBounds.current.length ? instance.fitBounds(L.latLngBounds(pointBounds.current), { padding: [60, 60], maxZoom: 13, animate: false }) : instance.setView(defaultCenter, 7, { animate: false }))
+    }
+    if (command.type === 'toggle-type') {
+      import('leaflet').then(L => {
+        if (baseLayer.current) instance.removeLayer(baseLayer.current)
+        alternateTiles.current = !alternateTiles.current
+        baseLayer.current = L.tileLayer(alternateTiles.current ? 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: alternateTiles.current ? 17 : 19, attribution: alternateTiles.current ? '&copy; OpenTopoMap contributors' : '&copy; OpenStreetMap contributors' }).addTo(instance).bringToBack()
+      })
+    }
+  }, [command])
+
+  useEffect(() => {
+    if (!element.current) return
+    const observer = new ResizeObserver(() => invalidateMap(map.current))
+    observer.observe(element.current)
+    return () => observer.disconnect()
+  }, [])
+
+  if (error) return <div className="map-setup"><AlertCircle /><strong>Map unavailable</strong><span>{error}</span></div>
+  return <><div ref={element} className="google-map dashboard-google-map" aria-label="Live locations on OpenStreetMap" />{!rows.length && <div className="live-map-empty"><MapPin /><strong>Map ready</strong><span>Live locations will appear here when coordinates are available.</span></div>}</>
 }
