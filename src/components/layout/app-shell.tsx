@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BarChart3, Bell, BookOpen, BriefcaseBusiness, Calculator, Car, Check, ChevronDown, Code2, CreditCard, Gauge,
   FileText, Globe2, HelpCircle, IdCard, Inbox,
@@ -33,7 +33,7 @@ const storefrontItems = [
   ['Products', '/storefront?view=products', Package],
   ['Catalogs', '/storefront?view=catalogs', BookOpen],
   ['Customers', '/storefront?view=customers', UsersRound],
-  ['Orders', '/orders', ReceiptText],
+  ['Orders', '/storefront?view=orders', ReceiptText],
   ['Networks', '/storefront?view=networks', Network],
   ['Food Trucks', '/storefront?view=food-trucks', Truck],
   ['Promotions', '/storefront?view=promotions', Radio],
@@ -61,7 +61,7 @@ const iamItems = [
 const developerItems = [
   ['Dashboard', '/developers', Home],
   ['API Keys', '/developers?view=api-keys', KeyRound],
-  ['Webhooks', '/integrations', Webhook],
+  ['Webhooks', '/developers?view=webhooks', Webhook],
   ['WebSockets', '/developers?view=websockets', Unplug],
   ['Logs', '/developers?view=logs', FileText],
   ['Events', '/developers?view=events', CalendarDays],
@@ -71,6 +71,7 @@ type OpenMenu = 'organization' | 'user' | 'notifications' | 'locale' | 'chat' | 
 
 export function AppShell({ children, homeMode = false }: { children: React.ReactNode; homeMode?: boolean }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const menusRef = useRef<HTMLElement>(null)
   const [dark, setDark] = useState(false)
@@ -148,7 +149,9 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         </div>
         <nav className="storefront-sidebar-nav" aria-label="Storefront navigation">
           {storefrontItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
-            const isActive = label === 'Dashboard' && pathname === '/storefront'
+            const currentView = searchParams.get('view')
+            const targetView = href.includes('view=') ? href.split('view=')[1] : null
+            const isActive = pathname === '/storefront' && (targetView ? currentView === targetView : !currentView)
             return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{['Products', 'Promotions', 'Settings'].includes(label) && <ChevronDown />}</Link>
           })}
         </nav>
@@ -181,7 +184,9 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         </div>
         <nav className="developers-sidebar-nav" aria-label="Developers navigation">
           {developerItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
-            const isActive = label === 'Dashboard' && pathname === '/developers'
+            const view = searchParams.get('view')
+            const hrefView = href.includes('view=') ? href.split('view=')[1] : null
+            const isActive = pathname === '/developers' && (label === 'Dashboard' ? !view : view === hrefView)
             return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span></Link>
           })}
         </nav>
