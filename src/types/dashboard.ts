@@ -3,6 +3,8 @@ export type ModuleName =
   | 'Live Operations'
   | 'Orders'
   | 'Drivers'
+  | 'Vehicles'
+  | 'Fleets'
   | 'Applications'
   | 'Service Areas'
   | 'Pricing'
