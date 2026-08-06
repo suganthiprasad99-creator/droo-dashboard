@@ -102,7 +102,8 @@ export function DashboardGoogleMap({ rows = [], selectedDriverID = '', selectedO
         const totalDistance = afterPickup ? plannedDistance : plannedDistance + nextStopDistance
         const remainingDistance = afterPickup ? nextStopDistance : totalDistance
         const travelledDistance = delivered ? totalDistance : afterPickup ? Math.max(0, totalDistance - remainingDistance) : 0
-        onRouteMetrics?.({ totalDistanceMeters: totalDistance, travelledDistanceMeters: travelledDistance, remainingDistanceMeters: remainingDistance, durationSeconds: delivered ? 0 : Number(remainingRoute.duration_seconds || 0), pickupCompleted: afterPickup, dropoffCompleted: delivered })
+        const remainingDuration = afterPickup ? Number(remainingRoute.duration_seconds || 0) : Number(remainingRoute.duration_seconds || 0) + Number(plannedRoute.duration_seconds || 0)
+        onRouteMetrics?.({ totalDistanceMeters: totalDistance, travelledDistanceMeters: travelledDistance, remainingDistanceMeters: remainingDistance, durationSeconds: delivered ? 0 : remainingDuration, pickupCompleted: afterPickup, dropoffCompleted: delivered })
         const path = delivered ? plannedRoute.path || [] : remainingRoute.path || []
         if (path.length) {
           L.polyline(path, { color: delivered ? '#26845c' : '#ff6b35', opacity: .95, weight: 6 }).addTo(map)
