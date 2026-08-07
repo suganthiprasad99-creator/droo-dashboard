@@ -12,16 +12,16 @@ import {
 } from 'lucide-react'
 
 const sidebarGroups = [
-  { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/live-operations'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
+  { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
   { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/earnings'], ['Issues', '/issues']] },
   { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues'], ['Schedules', '/issues'], ['Work Orders', '/issues'], ['Maintenances', '/issues'], ['Equipment', '/issues'], ['Parts', '/issues']] },
   { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations'], ['Fuel Providers', '/integrations'], ['Devices', '/integrations'], ['Sensors', '/integrations'], ['Events', '/integrations']] },
-  { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Reports', '/earnings']] },
+  { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/earnings']] },
   { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/settings'], ['Navigator App', '/settings'], ['Map', '/service-areas'], ['Payments', '/earnings'], ['Notifications', '/settings'], ['Routing', '/settings'], ['Orchestrator', '/settings'], ['Scheduling', '/settings'], ['Custom Fields', '/settings'], ['Avatars', '/settings']] },
 ] as const
 
 const products = [
-  ['Fleet-Ops', '/live-operations', Workflow, 'Operations'],
+  ['Fleet-Ops', '/orchestrator', Workflow, 'Operations'],
   ['Storefront', '/storefront', BriefcaseBusiness, 'Storefront'],
   ['Ledger', '/ledger', Calculator, 'Ledger'],
   ['IAM', '/iam', Shield, 'IAM'],
@@ -208,7 +208,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
             if (name === 'Operations') {
               setCurrentSidebarGroup('Operations')
               setMobile(false)
-              router.push('/live-operations')
+              router.push('/orders')
               return
             }
             setCurrentSidebarGroup(name)

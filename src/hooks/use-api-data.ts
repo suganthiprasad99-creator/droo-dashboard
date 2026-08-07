@@ -47,7 +47,9 @@ function fallbackRows(module: ModuleName) {
   return demoRows[module] || []
 }
 
-async function devLogin() {
+let activeDevLogin: Promise<string> | null = null
+
+async function performDevLogin() {
   const phone = process.env.NEXT_PUBLIC_DEV_LOGIN_PHONE || '+94770009999'
   const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, purpose: 'login' }) })
   if (!challengeResponse.ok) throw new Error(`Development login request failed (${challengeResponse.status})`)
@@ -59,6 +61,11 @@ async function devLogin() {
   sessionStorage.setItem(ACCESS_TOKEN_KEY, session.access_token)
   if (typeof session.refresh_token === 'string') sessionStorage.setItem(REFRESH_TOKEN_KEY, session.refresh_token)
   return session.access_token as string
+}
+
+function devLogin() {
+  if (!activeDevLogin) activeDevLogin = performDevLogin().finally(() => { activeDevLogin = null })
+  return activeDevLogin
 }
 
 async function refreshLogin() {
@@ -87,7 +94,7 @@ export async function fetchAuthenticated(path: string, init: RequestInit = {}) {
   return response
 }
 
-export function useApiData(module: ModuleName, refreshMs?: number) {
+export function useApiData(module: ModuleName, refreshMs?: number, allowDemoFallback = true) {
   const [rows, setRows] = useState<ApiRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -149,6 +156,9 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
           status: vehicle.status || driver.status,
           assigned_driver: driver.name,
           driver_id: driver.id,
+          position: driver.position,
+          max_load_kg: vehicle.max_load_kg,
+          current_load_kg: vehicle.current_load_kg,
         }
       }).filter((vehicle) => vehicle.id || vehicle.registration_number) : module === 'Fleets' ? Array.from(records.reduce((fleets, driver) => {
         const fleet = driver.fleet && typeof driver.fleet === 'object' ? driver.fleet as ApiRecord : {}
@@ -172,7 +182,7 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
         }
         return
       }
-      if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
+      if (allowDemoFallback && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
         setRows(fallbackRows(module))
         setError('')
         return
@@ -180,7 +190,7 @@ export function useApiData(module: ModuleName, refreshMs?: number) {
       setError(value instanceof Error ? value.message : 'API request failed')
     }).finally(() => !cancelled && setLoading(false))
     return () => { cancelled = true }
-  }, [module, revision])
+  }, [allowDemoFallback, module, revision])
 
   return { rows, loading, error, refresh: () => setRevision(value => value + 1) }
 }
