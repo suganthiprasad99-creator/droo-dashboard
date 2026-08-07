@@ -50,7 +50,8 @@ function fallbackRows(module: ModuleName) {
 let activeDevLogin: Promise<string> | null = null
 
 async function performDevLogin() {
-  const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '+916369487527', purpose: 'login' }) })
+  const phone = process.env.NEXT_PUBLIC_DEV_LOGIN_PHONE || '+94770009999'
+  const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, purpose: 'login' }) })
   if (!challengeResponse.ok) throw new Error(`Development login request failed (${challengeResponse.status})`)
   const challenge = await challengeResponse.json()
   const verification = await fetch('/v1/auth/otp/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challenge.challenge_id, code: '000000' }) })
@@ -77,6 +78,20 @@ async function refreshLogin() {
   sessionStorage.setItem(ACCESS_TOKEN_KEY, session.access_token)
   if (typeof session.refresh_token === 'string') sessionStorage.setItem(REFRESH_TOKEN_KEY, session.refresh_token)
   return session.access_token as string
+}
+
+export async function fetchAuthenticated(path: string, init: RequestInit = {}) {
+  let token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
+  if (!token && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') token = await refreshLogin() || await devLogin()
+  if (!token) throw new Error('Sign in to load live API data.')
+  const request = (accessToken: string) => fetch(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${accessToken}` } })
+  let response = await request(token)
+  if ((response.status === 401 || response.status === 403) && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+    token = await refreshLogin() || await devLogin()
+    response = await request(token)
+  }
+  return response
 }
 
 export function useApiData(module: ModuleName, refreshMs?: number, allowDemoFallback = true) {
