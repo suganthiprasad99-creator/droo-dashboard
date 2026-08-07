@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, Ban, Building2, CarFront, Contact, ExternalLink, Eye, Filter, Layers3, LayoutDashboard, List, Map as MapIcon, MapPin, MoreHorizontal, Navigation, Paperclip, Play, Plus, Radio, RefreshCw, Route, Search, Send, SkipBack, SkipForward, SlidersHorizontal, Square, Table2, Trash2, Truck, Upload, UserMinus, UserRound, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Ban, Building2, CarFront, Contact, ExternalLink, Eye, Filter, Layers3, LayoutDashboard, List, Map as MapIcon, MapPin, MoreHorizontal, Navigation, Paperclip, Pencil, Play, Plus, Radio, RefreshCw, Route, Search, Send, SkipBack, SkipForward, SlidersHorizontal, Square, Table2, Trash2, Truck, Upload, UserMinus, UserRound, X, Zap } from 'lucide-react'
 import { useApiData } from '@/hooks/use-api-data'
 import { GoogleLiveMap } from '@/components/google-live-map'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ComposeDialog } from '@/components/ui/compose-dialog'
+import { VehicleEditor } from '@/components/vehicle-editor'
+import { listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 import type { ApiRecord } from '@/types/dashboard'
 
 type ViewMode = 'map' | 'table' | 'board'
@@ -110,6 +112,15 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
   const [detailsRow, setDetailsRow] = useState<Record<string, unknown> | null>(null)
+  const [detailsMode, setDetailsMode] = useState<'order' | 'vehicle'>('order')
+  const [resourceActionRow, setResourceActionRow] = useState<ApiRecord | null>(null)
+  const [resourceActionPosition, setResourceActionPosition] = useState({ top: 0, right: 0 })
+  const [hiddenVehicleIds, setHiddenVehicleIds] = useState<Set<string>>(new Set())
+  const [routedPath, setRoutedPath] = useState<{ key: string; positions: ApiRecord[] }>({ key: '', positions: [] })
+  const [showSelectedRoute, setShowSelectedRoute] = useState(false)
+  const [editingVehicle, setEditingVehicle] = useState<ApiRecord | null>(null)
+  const [deletingVehicle, setDeletingVehicle] = useState<ApiRecord | null>(null)
+  const [vehicleOverrides, setVehicleOverrides] = useState<Record<string, ApiRecord>>({})
   const [orderActionRow, setOrderActionRow] = useState<string | null>(null)
   const [orderActionPosition, setOrderActionPosition] = useState({ top: 0, right: 0 })
   const [actionNotice, setActionNotice] = useState('')
@@ -127,6 +138,15 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
   const [mapCommand, setMapCommand] = useState<{ type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type'; nonce: number }>()
   const resourceSearchRef = useRef<HTMLInputElement>(null)
   const mapDragStart = useRef<{ y: number; height: number } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([listDashboardState<ApiRecord>('vehicle-overrides'), listDashboardState<boolean>('deleted-vehicles')]).then(([overrides, deleted]) => {
+      if (cancelled) return
+      setVehicleOverrides(Object.fromEntries(overrides.map(entry => [entry.key, entry.value])))
+      setHiddenVehicleIds(new Set(deleted.filter(entry => entry.value).map(entry => entry.key)))
+    }).catch(value => { if (!cancelled) setActionNotice(value instanceof Error ? value.message : 'Unable to load vehicle state.') })
+    return () => { cancelled = true }
+  }, [])
   const allRows = useMemo(() => [...orderRows, ...importedRows], [importedRows, orderRows])
   const filtered = useMemo(() => allRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'all' || String(row.status || '').toLowerCase() === statusFilter)), [allRows, search, statusFilter])
   const orderStatuses = useMemo(() => Array.from(new Set(allRows.map(row => String(row.status || '').toLowerCase()).filter(Boolean))).sort(), [allRows])
@@ -136,6 +156,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
   const activeMapOrders = orderRows
   const visibleMapOrders = useMemo(() => activeMapOrders.filter(row => JSON.stringify(row).toLowerCase().includes(mapOrderSearch.toLowerCase())), [activeMapOrders, mapOrderSearch])
   const liveFiltered = useMemo(() => rows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase())), [rows, search])
+  const effectiveVehicleRows = useMemo(() => vehicleRows.map(vehicle => ({ ...vehicle, ...(vehicleOverrides[String(vehicle.id || '')] || {}) })), [vehicleOverrides, vehicleRows])
   const placeRows = useMemo(() => {
     const places = new Map<string, ApiRecord>()
     orderRows.forEach(order => {
@@ -158,9 +179,9 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     return Array.from(places.values())
   }, [orderRows])
   const resources = useMemo(() => {
-    const source = resourceView === 'Vehicles' ? vehicleRows : resourceView === 'Drivers' ? driverRows : resourceView === 'Places' ? placeRows : resourceView === 'Positions' ? rows : []
-    return source.filter(row => JSON.stringify(row).toLowerCase().includes(resourceSearch.toLowerCase()))
-  }, [driverRows, placeRows, resourceSearch, resourceView, rows, vehicleRows])
+    const source = resourceView === 'Vehicles' ? effectiveVehicleRows : resourceView === 'Drivers' ? driverRows : resourceView === 'Places' ? placeRows : resourceView === 'Positions' ? rows : []
+    return source.filter(row => (resourceView !== 'Vehicles' || !hiddenVehicleIds.has(String(row.id || ''))) && JSON.stringify(row).toLowerCase().includes(resourceSearch.toLowerCase()))
+  }, [driverRows, effectiveVehicleRows, hiddenVehicleIds, placeRows, resourceSearch, resourceView, rows])
   const effectiveTrackable = trackable || String(driverRows[0]?.id || '')
   const latestPositionRows = useMemo(() => rows.filter(row => {
     if (!effectiveTrackable) return false
@@ -187,7 +208,17 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
       position: { ...position, latitude, longitude },
     }]
   }, [driverRows, effectiveTrackable, positionCursor, positionRows])
-  const mapRows = resourceView === 'Positions' ? positionMapRows : liveFiltered
+  const vehicleLocationRows = useMemo(() => {
+    const liveIds = new Set(liveFiltered.map(row => String(((row.driver || {}) as ApiRecord).id || row.id || '')))
+    const missingVehicles = effectiveVehicleRows.flatMap(vehicle => {
+      const driverId = String(vehicle.driver_id || '')
+      const position = vehicle.position && typeof vehicle.position === 'object' ? vehicle.position as ApiRecord : null
+      if (!driverId || !position || liveIds.has(driverId)) return []
+      return [{ id: driverId, driver: { id: driverId, name: vehicle.assigned_driver || vehicle.registration_number || driverId }, position } as ApiRecord]
+    })
+    return [...liveFiltered, ...missingVehicles]
+  }, [effectiveVehicleRows, liveFiltered])
+  const baseMapRows = resourceView === 'Positions' ? positionMapRows : vehicleLocationRows
   const mapSelected = resourceView === 'Positions' ? effectiveTrackable : selected
   const deviceEventRows = useMemo(() => orderRows.flatMap(order => {
     const metadata = order.metadata && typeof order.metadata === 'object' ? order.metadata as ApiRecord : {}
@@ -201,7 +232,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     if (!event) return []
     return [{ ...event, id: `${order.id}-geofence`, order: order.external_reference || order.id } as ApiRecord]
   }), [orderRows])
-  const selectedVehicle = useMemo(() => vehicleRows.find(row => String(row.id) === selectedVehicleId), [selectedVehicleId, vehicleRows])
+  const selectedVehicle = useMemo(() => effectiveVehicleRows.find(row => String(row.id) === selectedVehicleId), [effectiveVehicleRows, selectedVehicleId])
   const selectedDriver = useMemo(() => selectedVehicle ? driverRows.find(row => String(row.id) === String(selectedVehicle.driver_id)) : undefined, [driverRows, selectedVehicle])
   const selectedOrder = useMemo(() => {
     if (!selectedDriver) return undefined
@@ -211,6 +242,28 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     })
     return driverOrders.find(row => !['delivered', 'cancelled', 'failed'].includes(String(row.status).toLowerCase())) || driverOrders[0]
   }, [orderRows, selectedDriver])
+  const selectedRouteEndpoints = useMemo(() => {
+    const stops = Array.isArray(selectedOrder?.stops) ? selectedOrder.stops as ApiRecord[] : []
+    const pickup = coordinates(stops.find(stop => String(stop.type || '').toLowerCase() === 'pickup')?.address)
+    const dropoff = coordinates(stops.find(stop => String(stop.type || '').toLowerCase() === 'dropoff')?.address)
+    return pickup && dropoff ? { pickup, dropoff, key: `${pickup.latitude},${pickup.longitude}:${dropoff.latitude},${dropoff.longitude}` } : null
+  }, [selectedOrder])
+  useEffect(() => {
+    if (!selectedRouteEndpoints) return
+    let cancelled = false
+    const { pickup, dropoff, key } = selectedRouteEndpoints
+    const query = new URLSearchParams({ originLat: String(pickup.latitude), originLng: String(pickup.longitude), destinationLat: String(dropoff.latitude), destinationLng: String(dropoff.longitude) })
+    fetch(`/api/dev/routes?${query}`)
+      .then(response => response.ok ? response.json() : Promise.reject(new Error(`Route failed (${response.status})`)))
+      .then(value => { if (!cancelled && Array.isArray(value.path) && value.path.length) setRoutedPath({ key, positions: value.path.map((point: { lat: number; lng: number }) => ({ latitude: point.lat, longitude: point.lng })) }) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedRouteEndpoints])
+  const selectedRoutePositions = useMemo(() => selectedRouteEndpoints ? routedPath.key === selectedRouteEndpoints.key ? routedPath.positions : [selectedRouteEndpoints.pickup, selectedRouteEndpoints.dropoff] : [], [routedPath, selectedRouteEndpoints])
+  const mapRows = useMemo(() => baseMapRows.map((row, index) => {
+    const id = String(((row.driver || {}) as ApiRecord).id || row.id || index)
+    return showSelectedRoute && id === mapSelected && selectedRoutePositions.length ? { ...row, route_positions: selectedRoutePositions } : row
+  }), [baseMapRows, mapSelected, selectedRoutePositions, showSelectedRoute])
   const selectedMaxLoadKg = Number(selectedVehicle?.max_load_kg)
   const selectedCurrentLoadKg = Number(selectedVehicle?.current_load_kg)
   const hasCapacityData = Number.isFinite(selectedMaxLoadKg) && selectedMaxLoadKg > 0 && Number.isFinite(selectedCurrentLoadKg) && selectedCurrentLoadKg >= 0
@@ -311,6 +364,28 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     else url.searchParams.set('layout', next === 'board' ? 'kanban' : 'table')
     window.history.replaceState({}, '', url)
   }, [])
+  const focusVehicleOnMap = useCallback((vehicle: ApiRecord, includeRoute = false) => {
+    const vehicleId = String(vehicle.id || '')
+    const trackingId = String(vehicle.driver_id || vehicleId)
+    setSelectedVehicleId(vehicleId || null)
+    setSelected(trackingId || null)
+    setResourceView('Vehicles')
+    setShowSelectedRoute(includeRoute)
+    setResourceActionRow(null)
+    changeView('map')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [changeView])
+  const deleteVehicle = useCallback(async (vehicle: ApiRecord) => {
+    const id = String(vehicle.id || '')
+    if (!id) { setActionNotice('Vehicle ID is missing.'); return }
+    const label = String(vehicle.registration_number || vehicle.name || id)
+    try { await putDashboardState('deleted-vehicles', id, true) } catch (value) { setActionNotice(value instanceof Error ? value.message : 'Unable to delete vehicle.'); return }
+    setHiddenVehicleIds(current => new Set(current).add(id))
+    if (selectedVehicleId === id) { setSelectedVehicleId(null); setSelected(null); setShowSelectedRoute(false) }
+    setResourceActionRow(null)
+    setDeletingVehicle(null)
+    setActionNotice(`${label} deleted from the vehicle table.`)
+  }, [selectedVehicleId])
   const issueMapCommand = useCallback((type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type') => setMapCommand({ type, nonce: Date.now() }), [])
   const resizeMap = useCallback((clientY: number) => {
     if (!mapDragStart.current) return
@@ -371,7 +446,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
 
     {view === 'map' && <>
       <section className="operations-map-stage order-map-stage" style={{ height: mapHeight }}>
-        <GoogleLiveMap rows={mapRows} selected={mapSelected} onSelect={select} command={mapCommand} />
+        <GoogleLiveMap rows={mapRows} selected={mapSelected} onSelect={select} command={mapCommand} markerStyle="truck" showStopMarkers={false} />
         <div className="map-zoom"><button aria-label="Zoom in" onClick={() => issueMapCommand('zoom-in')}>+</button><button aria-label="Zoom out" onClick={() => issueMapCommand('zoom-out')}>−</button></div>
         <div className="map-tools"><button aria-label="Locate" onClick={() => issueMapCommand('locate')}><Navigation /></button><button aria-label="Search map" onClick={() => resourceSearchRef.current?.focus()}><Search /></button><button aria-label={`Orders: ${activeMapOrders.length}`} aria-expanded={mapOrdersOpen} onClick={() => setMapOrdersOpen(value => !value)}><Layers3 /><i>{activeMapOrders.length}</i></button><button aria-label="Map view" onClick={() => issueMapCommand('toggle-type')}><MapIcon /></button><button aria-label="View first position" onClick={() => { const first = liveFiltered[0]; if (first) select(String(((first.driver || {}) as Record<string, unknown>).id || first.id || 0)) }}><Eye /></button></div>
         {mapOrdersOpen && <aside className="map-orders-drawer" aria-label="Orders">
@@ -397,7 +472,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
 
       {selectedVehicle && <section className="shipment-dashboard" aria-label="Selected shipment dashboard">
         <article className="shipment-card shipment-summary-card">
-          <header><h2>Shipment details</h2><button onClick={() => selectedOrder && setDetailsRow(selectedOrder)}>Read more</button></header>
+          <header><h2>Shipment details</h2><button onClick={() => { if (selectedOrder) { setDetailsMode('order'); setDetailsRow(selectedOrder) } }}>Read more</button></header>
           <div className="shipment-person"><span><UserRound /></span><div><strong>{String(selectedDriver?.name || assignedDriver(selectedOrder || {}))}</strong><small>{String(selectedOrder?.external_reference || selectedOrder?.id || 'No active order')} · IN</small></div><div className="shipment-rating">Rating <b>{driverRating == null || driverRating === '' ? '—' : String(driverRating)}</b><MoreHorizontal /></div></div>
           <div className="shipment-facts">
             <section><strong>Transport parcels</strong><span>{String(selectedOrder?.status || 'Not available')}</span><b>{amountMinor ? `${(amountMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ₹` : '—'}</b></section>
@@ -407,7 +482,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
         </article>
 
         <article className="shipment-card capacity-card">
-          <header><h2>Current truck capacity</h2><button onClick={() => selectedVehicle && setDetailsRow(selectedVehicle)}>Read more</button></header>
+          <header><h2>Current truck capacity</h2><button onClick={() => { if (selectedVehicle) { setDetailsMode('vehicle'); setDetailsRow(selectedVehicle) } }}>Read more</button></header>
           <div className="capacity-visual">
             <svg className="capacity-truck" viewBox="0 0 300 120" role="img" aria-label={capacityPercent == null ? 'Truck capacity not provided' : `Truck at ${capacityPercent}% capacity`}>
               <rect x="89" y="20" width="188" height="66" rx="3" className="truck-box" />
@@ -455,7 +530,7 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
               const name = resourceView === 'Vehicles' ? row.registration_number || row.name || row.id : resourceView === 'Drivers' ? row.name || row.id : row.address || row.name || row.id
               const status = String(row.status || driver.status || 'Unknown')
               if (resourceView === 'Places') return <tr key={id}><td>{String(name || '—')}</td><td>{location}</td></tr>
-              return <tr key={id} className={selected === id ? 'selected' : ''} onClick={() => { select(id); if (resourceView === 'Vehicles') setSelectedVehicleId(id) }}><td><span className="resource-name"><i />{resourceView === 'Drivers' ? <Contact /> : <Truck />}{String(name || 'Unnamed resource')}</span></td><td>{location}</td>{resourceView === 'Drivers' && <td>{String(row.current_job || row.active_order_id || '—')}</td>}<td><span className={`resource-status ${status.toLowerCase().replaceAll(' ', '-')}`}><i />{status}</span></td><td>{relativeLastSeen(position.recorded_at || row.updated_at || row.last_seen_at)}</td><td><button aria-label="View details" onClick={event => { event.stopPropagation(); setDetailsRow(row) }}><MoreHorizontal /></button></td></tr>
+              return <tr key={id} className={selected === id ? 'selected' : ''} onClick={() => { select(id); if (resourceView === 'Vehicles') setSelectedVehicleId(id) }}><td><span className="resource-name"><i />{resourceView === 'Drivers' ? <Contact /> : <Truck />}{String(name || 'Unnamed resource')}</span></td><td>{location}</td>{resourceView === 'Drivers' && <td>{String(row.current_job || row.active_order_id || '—')}</td>}<td><span className={`resource-status ${status.toLowerCase().replaceAll(' ', '-')}`}><i />{status}</span></td><td>{relativeLastSeen(position.recorded_at || row.updated_at || row.last_seen_at)}</td><td><button aria-label={`Actions for ${String(name || 'vehicle')}`} aria-expanded={resourceActionRow === row} onClick={event => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setResourceActionPosition({ top: Math.max(10, Math.min(rect.bottom + 6, window.innerHeight - 210)), right: Math.max(10, window.innerWidth - rect.right) }); setResourceActionRow(current => current === row ? null : row) }}><MoreHorizontal /></button></td></tr>
             })}
             {!loading && !vehiclesLoading && !driversLoading && resources.length === 0 && <tr><td colSpan={resourceView === 'Drivers' ? 6 : resourceView === 'Places' ? 2 : 5} className="resource-empty">No {resourceView.toLowerCase()} found.</td></tr>}
           </tbody></table></div>
@@ -496,7 +571,10 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
       })}</div>
     </section>}
     {composeOpen && <ComposeDialog module="Orders" label="Create Order" onClose={() => { setComposeOpen(false); refreshOrders(); refresh() }} />}
-    {detailsRow && <div className="order-action-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setDetailsRow(null) }}><section className="order-action-dialog" role="dialog" aria-modal="true"><header><div><small>ORDER DETAILS</small><h2>{String(detailsRow.external_reference || detailsRow.active_order_id || detailsRow.id || 'Order')}</h2></div><button onClick={() => setDetailsRow(null)} aria-label="Close details"><X /></button></header><dl><div><dt>Status</dt><dd><StatusBadge value={String(detailsRow.status || 'Unknown')} /></dd></div><div><dt>Driver</dt><dd>{assignedDriver(detailsRow)}</dd></div><div><dt>Pickup</dt><dd>{stopLabel(detailsRow, 'pickup')}</dd></div><div><dt>Dropoff</dt><dd>{stopLabel(detailsRow, 'dropoff')}</dd></div></dl><footer><button onClick={() => { setDetailsRow(null); changeView('map') }}>Show on map</button><button className="primary" onClick={() => setDetailsRow(null)}>Done</button></footer></section></div>}
+    {detailsRow && <div className="order-action-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setDetailsRow(null) }}><section className="order-action-dialog" role="dialog" aria-modal="true"><header><div><small>{detailsMode === 'vehicle' ? 'VEHICLE DETAILS' : 'ORDER DETAILS'}</small><h2>{String(detailsMode === 'vehicle' ? detailsRow.registration_number || detailsRow.name || detailsRow.id || 'Vehicle' : detailsRow.external_reference || detailsRow.active_order_id || detailsRow.id || 'Order')}</h2></div><button onClick={() => setDetailsRow(null)} aria-label="Close details"><X /></button></header>{detailsMode === 'vehicle' ? <dl><div><dt>Status</dt><dd><StatusBadge value={String(detailsRow.status || 'Unknown')} /></dd></div><div><dt>Type</dt><dd>{String(detailsRow.type || '—')}</dd></div><div><dt>Driver</dt><dd>{String(detailsRow.assigned_driver || detailsRow.driver_id || 'Unassigned')}</dd></div><div><dt>Location</dt><dd>{positionCoordinate((detailsRow.position as ApiRecord | undefined)?.latitude)} {positionCoordinate((detailsRow.position as ApiRecord | undefined)?.longitude)}</dd></div></dl> : <dl><div><dt>Status</dt><dd><StatusBadge value={String(detailsRow.status || 'Unknown')} /></dd></div><div><dt>Driver</dt><dd>{assignedDriver(detailsRow)}</dd></div><div><dt>Pickup</dt><dd>{stopLabel(detailsRow, 'pickup')}</dd></div><div><dt>Dropoff</dt><dd>{stopLabel(detailsRow, 'dropoff')}</dd></div></dl>}<footer><button onClick={() => { setDetailsRow(null); changeView('map') }}>Show on map</button><button className="primary" onClick={() => setDetailsRow(null)}>Done</button></footer></section></div>}
+    {resourceActionRow && <><button className="order-actions-dismiss" aria-label="Close vehicle actions" onClick={() => setResourceActionRow(null)} /><div className="global-order-actions-menu" style={{ top: resourceActionPosition.top, right: resourceActionPosition.right }} role="menu"><header>Vehicle Actions</header><button onClick={() => focusVehicleOnMap(resourceActionRow, true)}><Eye />View Vehicle</button><button onClick={() => { setEditingVehicle(resourceActionRow); setResourceActionRow(null) }}><Pencil />Edit Vehicle</button><button onClick={() => focusVehicleOnMap(resourceActionRow)}><MapPin />Locate Vehicle on Map</button><hr /><button onClick={() => { setDeletingVehicle(resourceActionRow); setResourceActionRow(null) }}><Trash2 />Delete Vehicle</button></div></>}
+    {deletingVehicle && <div className="vehicle-delete-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setDeletingVehicle(null) }}><section className="vehicle-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="vehicle-delete-title" aria-describedby="vehicle-delete-description"><div className="vehicle-delete-content"><span className="vehicle-delete-warning"><AlertTriangle /></span><div><h2 id="vehicle-delete-title">Delete Vehicle ({String(deletingVehicle.name || deletingVehicle.registration_number || deletingVehicle.id || 'Vehicle')})?</h2><p id="vehicle-delete-description">This action cannot be undone. Once deleted, the record will be permanently removed.</p></div></div><footer><button type="button" onClick={() => setDeletingVehicle(null)}><X />Cancel</button><button type="button" className="danger" onClick={() => deleteVehicle(deletingVehicle)}><Trash2 />Confirm Delete</button></footer></section></div>}
+    {editingVehicle && <VehicleEditor vehicle={editingVehicle} drivers={driverRows} onClose={() => setEditingVehicle(null)} onSave={vehicle => { const id = String(vehicle.id || ''); putDashboardState('vehicle-overrides', id, vehicle).then(() => { setVehicleOverrides(current => ({ ...current, [id]: vehicle })); setEditingVehicle(null); setActionNotice('Vehicle changes saved.') }).catch(value => setActionNotice(value instanceof Error ? value.message : 'Unable to save vehicle changes.')) }} />}
     {orderActionRow && (() => { const row = filtered.find((item, index) => String(item.id || index) === orderActionRow); if (!row) return null; return <><button className="order-actions-dismiss" aria-label="Close order actions" onClick={() => setOrderActionRow(null)} /><div className="global-order-actions-menu" style={{ top: orderActionPosition.top, right: orderActionPosition.right }} role="menu"><header>Order Actions</header><button onClick={() => { setDetailsRow(row); setOrderActionRow(null) }}><Eye />View Order</button><button disabled={String(row.status).toLowerCase() !== 'assigned'} onClick={() => { setOrderActionRow(null); mutateOrder(row, 'unassign').then(() => setActionNotice('Driver unassigned.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Unassign failed.')) }}><UserMinus />Unassign Driver</button><button disabled={['delivered', 'cancelled', 'failed'].includes(String(row.status).toLowerCase())} onClick={() => { if (!window.confirm('Cancel this order?')) return; setOrderActionRow(null); cancelOrder(row).then(() => setActionNotice('Order cancelled.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Cancel failed.')) }}><Ban />Cancel Order</button><hr /><button onClick={() => { if (!window.confirm('Delete this order from operational lists?')) return; setOrderActionRow(null); mutateOrder(row, 'archive').then(() => setActionNotice('Order deleted.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Delete failed.')) }}><Trash2 />Delete Order</button></div></> })()}
     {actionNotice && <div className="orders-action-notice" role="status">{actionNotice}<button onClick={() => setActionNotice('')}><X /></button></div>}
   </div>
