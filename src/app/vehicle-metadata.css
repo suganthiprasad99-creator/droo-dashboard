@@ -1,0 +1,137 @@
+.vehicle-metadata { padding: 4px 28px 28px; }
+.vehicle-metadata-toolbar { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; }
+.vehicle-metadata-toolbar > input { width: min(330px, 100%); height: 42px; }
+.vehicle-metadata-toolbar button { height: 42px; padding: 0 13px; }
+.vehicle-metadata-toolbar button.active { border-color: #f45112; color: #f45112; background: #fff5f1; }
+.vehicle-metadata-toolbar button.danger { margin-left: auto; color: #bc3f45; }
+.vehicle-metadata-toolbar button:disabled { opacity: .4; cursor: not-allowed; }
+.vehicle-metadata-table { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.vehicle-metadata-heading,
+.vehicle-metadata-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(190px, 1.4fr) 150px 48px; align-items: center; gap: 10px; padding: 10px 12px; }
+.vehicle-metadata-heading { min-height: 45px; background: var(--surface2); color: var(--text); font-size: 13px; }
+.vehicle-metadata-row { border-top: 1px solid var(--border); }
+.vehicle-metadata-row input,
+.vehicle-metadata-row select { height: 40px; font-size: 13px; }
+.vehicle-metadata-row .icon { width: 38px; height: 38px; padding: 0; color: #bc3f45; }
+.vehicle-metadata-boolean { height: 40px !important; display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid #d8d5d1; border-radius: 9px; }
+.vehicle-metadata-boolean input { width: 17px !important; height: 17px !important; box-shadow: none; }
+.vehicle-metadata-boolean span { font-size: 13px !important; font-weight: 400 !important; }
+.vehicle-metadata-empty { margin: 0; padding: 28px; text-align: center; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 650px) {
+  .vehicle-metadata-toolbar { flex-wrap: wrap; }
+  .vehicle-metadata-toolbar > input { width: 100%; }
+  .vehicle-metadata-toolbar button.danger { margin-left: 0; }
+  .vehicle-metadata-heading { display: none; }
+  .vehicle-metadata-row { grid-template-columns: 1fr 1fr; padding: 12px; }
+  .vehicle-metadata-row .icon { justify-self: end; }
+  .vehicle-metadata-boolean { min-width: 0; }
+}
+
+/* Keep the vehicle editor responsive like the order drawer. */
+.vehicle-editor-backdrop {
+  align-items: stretch;
+  animation: vehicle-editor-backdrop-in .24s ease-out both;
+}
+
+.vehicle-editor-backdrop > .vehicle-editor {
+  width: min(560px, 100vw);
+  max-width: 100%;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 12px 0 0 12px;
+  overflow: hidden;
+  will-change: transform, opacity;
+  animation: vehicle-editor-panel-in .38s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.vehicle-editor-backdrop > .vehicle-editor > header,
+.vehicle-editor-backdrop > .vehicle-editor > footer { flex: 0 0 auto; background: var(--surface); }
+.vehicle-editor-backdrop > .vehicle-editor > header { min-height: 56px; padding: 9px 18px; }
+.vehicle-editor-backdrop .vehicle-editor h2 { font-size: 18px; }
+.vehicle-editor-backdrop .vehicle-editor button { height: 35px; padding-inline: 12px; border-radius: 7px; font-size: 11px; gap: 6px; }
+.vehicle-editor-backdrop .vehicle-editor button svg { width: 14px; }
+.vehicle-editor-backdrop .vehicle-editor > header button[aria-label] { width: 36px; }
+.vehicle-editor-backdrop > .vehicle-editor > footer { box-shadow: 0 -5px 14px rgb(0 0 0 / 4%); }
+.vehicle-editor-backdrop > .vehicle-editor > footer { padding: 9px 18px; gap: 8px; }
+.vehicle-editor-backdrop .vehicle-editor-body { min-width: 0; overscroll-behavior: contain; }
+.vehicle-editor-backdrop .vehicle-editor details { overflow: visible; }
+.vehicle-editor-backdrop .vehicle-editor summary { padding: 13px 18px; font-size: 13px; }
+.vehicle-editor-backdrop .vehicle-editor h4 { margin: 14px 18px 0; font-size: 10px; }
+.vehicle-editor-backdrop .vehicle-editor-grid { padding: 9px 18px 15px; gap: 9px 12px; }
+.vehicle-editor-backdrop .vehicle-editor label { gap: 4px; }
+.vehicle-editor-backdrop .vehicle-editor label span { font-size: 11px; }
+.vehicle-editor-backdrop .vehicle-editor input,
+.vehicle-editor-backdrop .vehicle-editor select { height: 36px; padding-inline: 10px; border-radius: 7px; font-size: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 4%); }
+.vehicle-editor-backdrop .vehicle-editor textarea { padding: 9px; border-radius: 7px; font-size: 12px; }
+.vehicle-editor-backdrop .vehicle-upload { grid-template-columns: 66px max-content 1fr; gap: 9px; padding: 13px 18px 3px; }
+.vehicle-editor-backdrop .vehicle-upload img { width: 66px; height: 54px; }
+.vehicle-editor-backdrop .vehicle-upload label { height: 35px; padding-inline: 11px; font-size: 11px; }
+.vehicle-editor-backdrop .vehicle-upload small { font-size: 9px; }
+.vehicle-editor-backdrop .vehicle-checks { gap: 14px; padding: 0 18px 15px; font-size: 11px; }
+.vehicle-editor-backdrop .vehicle-avatar { gap: 12px; padding: 14px 18px 18px; }
+.vehicle-editor-backdrop .vehicle-avatar img { width: 74px; height: 82px; }
+.vehicle-editor-backdrop .vehicle-editor-grid > label,
+.vehicle-editor-backdrop .vehicle-editor-grid input,
+.vehicle-editor-backdrop .vehicle-editor-grid select { min-width: 0; }
+
+@keyframes vehicle-editor-backdrop-in {
+  from { background-color: rgb(17 17 17 / 0%); }
+  to { background-color: rgb(17 17 17 / 60%); }
+}
+
+@keyframes vehicle-editor-panel-in {
+  from { opacity: .6; transform: translate3d(48px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (max-width: 900px) {
+  .vehicle-editor-backdrop > .vehicle-editor { width: min(560px, 100vw); }
+  .vehicle-editor-backdrop .vehicle-editor > header { padding-inline: 18px; }
+  .vehicle-editor-backdrop .vehicle-editor summary { padding-inline: 18px; }
+  .vehicle-editor-backdrop .vehicle-editor h4 { margin-inline: 18px; }
+  .vehicle-editor-backdrop .vehicle-editor-grid,
+  .vehicle-editor-backdrop .vehicle-upload,
+  .vehicle-editor-backdrop .vehicle-avatar,
+  .vehicle-editor-backdrop .vehicle-checks,
+  .vehicle-editor-backdrop .vehicle-metadata { padding-inline: 18px; }
+}
+
+@media (max-width: 650px) {
+  .vehicle-editor-backdrop > .vehicle-editor { width: 100vw; border: 0; border-radius: 0; }
+  .vehicle-editor-backdrop .vehicle-editor > header { min-height: 54px; padding: 8px 12px; align-items: center; }
+  .vehicle-editor-backdrop .vehicle-editor > header > div:first-child { min-width: 0; }
+  .vehicle-editor-backdrop .vehicle-editor h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vehicle-editor-backdrop .vehicle-editor > header > div:last-child { gap: 7px; }
+  .vehicle-editor-backdrop .vehicle-editor > header button { height: 35px; padding: 0 10px; }
+  .vehicle-editor-backdrop .vehicle-editor > header button[aria-label] { width: 35px; }
+  .vehicle-editor-backdrop .vehicle-editor > header .primary { font-size: 0; width: 35px; padding: 0; }
+  .vehicle-editor-backdrop .vehicle-editor > header .primary svg { margin: 0; }
+  .vehicle-editor-backdrop .vehicle-editor summary { padding: 13px 12px; font-size: 13px; }
+  .vehicle-editor-backdrop .vehicle-editor h4 { margin: 14px 12px 0; font-size: 10px; }
+  .vehicle-editor-backdrop .vehicle-editor-grid { grid-template-columns: 1fr; padding: 9px 12px 15px; gap: 9px; }
+  .vehicle-editor-backdrop .vehicle-editor label span { font-size: 11px; }
+  .vehicle-editor-backdrop .vehicle-editor input,
+  .vehicle-editor-backdrop .vehicle-editor select { height: 36px; font-size: 12px; }
+  .vehicle-editor-backdrop .vehicle-upload { padding: 12px 12px 3px; }
+  .vehicle-editor-backdrop .vehicle-checks,
+  .vehicle-editor-backdrop .vehicle-avatar,
+  .vehicle-editor-backdrop .vehicle-metadata { padding-inline: 12px; }
+  .vehicle-editor-backdrop .vehicle-avatar { align-items: flex-start; }
+  .vehicle-editor-backdrop .vehicle-avatar label { width: 100%; }
+  .vehicle-editor-backdrop .vehicle-editor > footer { padding: 9px 12px; }
+  .vehicle-editor-backdrop .vehicle-editor > footer button { flex: 1; height: 36px; }
+}
+
+@media (max-width: 420px) {
+  .vehicle-editor-backdrop .vehicle-upload { grid-template-columns: 62px 1fr; }
+  .vehicle-editor-backdrop .vehicle-upload img { width: 62px; height: 62px; }
+  .vehicle-editor-backdrop .vehicle-upload label { min-width: 0; padding-inline: 10px; }
+  .vehicle-editor-backdrop .vehicle-avatar { display: grid; grid-template-columns: 74px 1fr; }
+  .vehicle-editor-backdrop .vehicle-avatar img { width: 74px; height: 84px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vehicle-editor-backdrop,
+  .vehicle-editor { animation-duration: .01ms; }
+}

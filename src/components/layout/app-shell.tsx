@@ -10,11 +10,12 @@ import {
   Landmark, PanelLeft, Plus, Radio, ReceiptText, Rocket, Search, Settings2, Shield, SlidersHorizontal, Store,
   Sun, Truck, Unplug, UserRound, Users, UsersRound, Webhook, Workflow, Wrench, X,
 } from 'lucide-react'
+import { listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 
 const sidebarGroups = [
   { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
   { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/earnings'], ['Issues', '/issues']] },
-  { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues'], ['Schedules', '/issues'], ['Work Orders', '/issues'], ['Maintenances', '/issues'], ['Equipment', '/issues'], ['Parts', '/issues']] },
+  { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues?view=maintenance'], ['Schedules', '/issues?view=schedules'], ['Work Orders', '/issues?view=work-orders'], ['Maintenances', '/issues?view=maintenances'], ['Equipment', '/issues?view=equipment'], ['Parts', '/issues?view=parts']] },
   { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations'], ['Fuel Providers', '/integrations'], ['Devices', '/integrations'], ['Sensors', '/integrations'], ['Events', '/integrations']] },
   { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/earnings']] },
   { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/settings'], ['Navigator App', '/settings'], ['Map', '/service-areas'], ['Payments', '/earnings'], ['Notifications', '/settings'], ['Routing', '/settings'], ['Orchestrator', '/settings'], ['Scheduling', '/settings'], ['Custom Fields', '/settings'], ['Avatars', '/settings']] },
@@ -79,24 +80,34 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [collapsed, setCollapsed] = useState(false)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [locale, setLocale] = useState('English')
+  const maintenanceLabels: Record<string, string> = { maintenance: 'Maintenance Hub', schedules: 'Schedules', 'work-orders': 'Work Orders', maintenances: 'Maintenances', equipment: 'Equipment', parts: 'Parts' }
+  const initialMaintenanceItem = pathname === '/issues' ? maintenanceLabels[searchParams.get('view') || ''] ?? null : null
   const [sidebarSearch, setSidebarSearch] = useState('')
-  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(null)
+  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : null)
+  const [, setSelectedSidebarItem] = useState<string | null>(initialMaintenanceItem)
   const initialProduct = pathname === '/storefront' ? 'Storefront' : pathname === '/ledger' ? 'Ledger' : pathname === '/iam' ? 'IAM' : pathname === '/developers' ? 'Developers' : 'Fleet-Ops'
-  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
+  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
   const [activeProduct, setActiveProduct] = useState(initialProduct)
   const [resourceTab, setResourceTab] = useState<'Fleets' | 'Drivers' | 'Vehicles'>('Fleets')
+  const sidebarItemActive = (href: string) => {
+    const [targetPath, query = ''] = href.split('?')
+    if (pathname !== targetPath) return false
+    const target = new URLSearchParams(query)
+    return Array.from(target.entries()).every(([key, value]) => searchParams.get(key) === value)
+  }
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem('droo-theme')
-    const useDark = storedTheme ? storedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-    document.documentElement.classList.toggle('dark', useDark)
-    const frame = requestAnimationFrame(() => {
-      setDark(useDark)
-      setCollapsed(localStorage.getItem('droo-sidebar-collapsed') === 'true')
-      setLocale(localStorage.getItem('droo-locale') || 'English')
-    })
-    return () => cancelAnimationFrame(frame)
+    let cancelled = false
+    listDashboardState<{ dark: boolean; collapsed: boolean; locale: string }>('ui-preferences').then(entries => {
+      if (cancelled) return
+      const saved = entries.find(entry => entry.key === 'preferences')?.value
+      const useDark = saved?.dark ?? window.matchMedia('(prefers-color-scheme: dark)').matches
+      setDark(useDark); setCollapsed(Boolean(saved?.collapsed)); setLocale(saved?.locale || 'English'); document.documentElement.classList.toggle('dark', useDark)
+    }).catch(() => { const useDark = window.matchMedia('(prefers-color-scheme: dark)').matches; setDark(useDark); document.documentElement.classList.toggle('dark', useDark) })
+    return () => { cancelled = true }
   }, [])
+
+  const savePreferences = (next: { dark: boolean; collapsed: boolean; locale: string }) => { void putDashboardState('ui-preferences', 'preferences', next).catch(() => {}) }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -124,13 +135,13 @@ export function AppShell({ children, homeMode = false }: { children: React.React
     const next = !dark
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('droo-theme', next ? 'dark' : 'light')
+    savePreferences({ dark: next, collapsed, locale })
   }
 
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)
-    localStorage.setItem('droo-sidebar-collapsed', String(next))
+    savePreferences({ dark, collapsed: next, locale })
   }
 
   const toggleMenu = (menu: Exclude<OpenMenu, null>) => setOpenMenu((current) => current === menu ? null : menu)
@@ -199,12 +210,13 @@ export function AppShell({ children, homeMode = false }: { children: React.React
       <nav className="fleet-sidebar-nav">
         {currentSidebarGroup ? <>
           <button className="sidebar-back" type="button" aria-label={`Back from ${currentSidebarGroup}`} onClick={() => { setCurrentSidebarGroup(null); setSidebarSearch('') }}><ChevronDown /><span>{currentSidebarGroup}</span></button>
-          <div className="nested-sidebar-items">{sidebarGroups.find((group) => group.name === currentSidebarGroup)?.items.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href]) => <Link key={label} href={href} className={pathname === href ? 'active' : ''} aria-current={pathname === href ? 'page' : undefined} onClick={() => setMobile(false)}><span>{label}</span></Link>)}</div>
+          <div className="nested-sidebar-items">{sidebarGroups.find((group) => group.name === currentSidebarGroup)?.items.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href]) => { const selected = sidebarItemActive(href); return <Link key={label} href={href} className={selected ? 'active' : ''} aria-current={selected ? 'page' : undefined} onClick={() => { setSelectedSidebarItem(label); setMobile(false) }}><span>{label}</span></Link> })}</div>
         </> : sidebarGroups.filter(({ name, items }) => !sidebarSearch || name.toLowerCase().includes(sidebarSearch.toLowerCase()) || items.some(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase()))).map(({ name, icon: Icon }) => {
           const isActive = activeSidebarGroup === name
           return <button key={name} className={isActive ? 'group-trigger active' : 'group-trigger'} aria-current={isActive ? 'page' : undefined} onClick={() => {
             setActiveSidebarGroup(name)
             setSidebarSearch('')
+            setSelectedSidebarItem(null)
             if (name === 'Operations') {
               setCurrentSidebarGroup('Operations')
               setMobile(false)
@@ -212,6 +224,11 @@ export function AppShell({ children, homeMode = false }: { children: React.React
               return
             }
             setCurrentSidebarGroup(name)
+            if (name === 'Maintenance') {
+              setSelectedSidebarItem('Maintenance Hub')
+              setMobile(false)
+              router.push('/issues?view=maintenance')
+            }
           }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronDown /></button>
         })}
       </nav>
@@ -254,7 +271,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
           <div className="nav-menu-wrap">
             <button className="icon-action optional-action" aria-label={`Language: ${locale}`} aria-expanded={openMenu === 'locale'} onClick={() => toggleMenu('locale')}><Globe2 /></button>
             {openMenu === 'locale' && <div className="nav-dropdown compact-dropdown" role="menu">
-              {['English', 'தமிழ்', 'हिन्दी'].map((language) => <button key={language} className="dropdown-item" onClick={() => { setLocale(language); localStorage.setItem('droo-locale', language); setOpenMenu(null) }}>{language === locale && <Check />}{language}</button>)}
+              {['English', 'தமிழ்', 'हिन्दी'].map((language) => <button key={language} className="dropdown-item" onClick={() => { setLocale(language); savePreferences({ dark, collapsed, locale: language }); setOpenMenu(null) }}>{language === locale && <Check />}{language}</button>)}
             </div>}
           </div>
           <button className="icon-action optional-action" aria-label="Inbox" onClick={() => router.push('/issues')}><Inbox /></button>
