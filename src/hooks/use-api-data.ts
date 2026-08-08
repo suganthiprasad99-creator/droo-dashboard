@@ -23,9 +23,9 @@ const demoRows: Partial<Record<ModuleName, ApiRecord[]>> = {
     { id: 'drv_demo_3', name: 'Priya Sharma', type: 'internal', status: 'available', phone: '+91 90000 10003', vehicle_id: 'veh_demo_3', vehicle_registration: 'TN 22 CM 7654' },
   ],
   Vehicles: [
-    { id: 'veh_demo_1', registration_number: 'TN 01 DR 0010', type: 'motorcycle', status: 'active', assigned_driver: 'Naveen Kumar' },
-    { id: 'veh_demo_2', registration_number: 'TN 09 BK 4821', type: 'scooter', status: 'active', assigned_driver: 'Arun Prakash' },
-    { id: 'veh_demo_3', registration_number: 'TN 22 CM 7654', type: 'motorcycle', status: 'available', assigned_driver: 'Priya Sharma' },
+    { id: 'veh_demo_1', registration_number: 'TN 01 DR 0010', type: 'motorcycle', status: 'active', driver_id: 'drv_demo_1', assigned_driver: 'Naveen Kumar' },
+    { id: 'veh_demo_2', registration_number: 'TN 09 BK 4821', type: 'scooter', status: 'active', driver_id: 'drv_demo_2', assigned_driver: 'Arun Prakash' },
+    { id: 'veh_demo_3', registration_number: 'TN 22 CM 7654', type: 'motorcycle', status: 'available', driver_id: 'drv_demo_3', assigned_driver: 'Priya Sharma' },
   ],
   Fleets: [
     { id: 'flt_demo_1', name: 'Chennai Central Fleet', status: 'active', drivers: 2, vehicles: 2, service_area: 'Chennai Central' },
@@ -50,7 +50,7 @@ function fallbackRows(module: ModuleName) {
 let activeDevLogin: Promise<string> | null = null
 
 async function performDevLogin() {
-  const phone = process.env.NEXT_PUBLIC_DEV_LOGIN_PHONE || '+94770009999'
+  const phone = process.env.NEXT_PUBLIC_DEV_LOGIN_PHONE || '+916369487527'
   const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, purpose: 'login' }) })
   if (!challengeResponse.ok) throw new Error(`Development login request failed (${challengeResponse.status})`)
   const challenge = await challengeResponse.json()
@@ -88,7 +88,8 @@ export async function fetchAuthenticated(path: string, init: RequestInit = {}) {
   let response = await request(token)
   if ((response.status === 401 || response.status === 403) && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
     sessionStorage.removeItem(ACCESS_TOKEN_KEY)
-    token = await refreshLogin() || await devLogin()
+    if (response.status === 403) sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+    token = response.status === 403 ? await devLogin() : await refreshLogin() || await devLogin()
     response = await request(token)
   }
   return response
@@ -117,16 +118,9 @@ export function useApiData(module: ModuleName, refreshMs?: number, allowDemoFall
         if (!cancelled) setRows(Array.isArray(value) ? value : value.data || [])
         return
       }
-      let token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
-      if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') {
-        const valid = token && await fetch('/v1/me', { headers: { Authorization: `Bearer ${token}` } }).then(response => response.ok).catch(() => false)
-        if (!valid) { sessionStorage.removeItem(ACCESS_TOKEN_KEY); token = await refreshLogin() || await devLogin() }
-      }
-      if (!token) throw new Error('Sign in to load live API data.')
-      const headers = { Authorization: `Bearer ${token}` }
       if (module === 'Overview') {
         const [orders, drivers, earnings, liveDrivers] = await Promise.all(['/admin/orders?limit=100', '/admin/drivers?limit=100', '/admin/earnings?limit=100', '/admin/live-drivers'].map(async endpoint => {
-          const response = await fetch(`/v1${endpoint}`, { headers })
+          const response = await fetchAuthenticated(`/v1${endpoint}`)
           if (!response.ok) throw new Error(`Overview API request failed (${response.status})`)
           return response.json()
         }))
@@ -142,33 +136,12 @@ export function useApiData(module: ModuleName, refreshMs?: number, allowDemoFall
       }
       const path = modules[module].apiPath
       if (!path) { setRows([]); return }
-      const response = await fetch(`/v1${path}`, { headers })
+      const response = await fetchAuthenticated(`/v1${path}`)
       if (!response.ok) throw new Error(`API request failed (${response.status})`)
       const value = await response.json()
       let records: ApiRecord[] = Array.isArray(value) ? value : value.data || []
       if (module === 'Orders' && !records.length && process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === 'true') records = fallbackRows('Orders')
-      if (!cancelled) setRows(module === 'Vehicles' ? records.map((driver) => {
-        const vehicle = driver.vehicle && typeof driver.vehicle === 'object' ? driver.vehicle as ApiRecord : {}
-        return {
-          id: vehicle.id || driver.vehicle_id,
-          registration_number: vehicle.registration_number || driver.vehicle_registration,
-          type: vehicle.type || driver.vehicle_type,
-          status: vehicle.status || driver.status,
-          assigned_driver: driver.name,
-          driver_id: driver.id,
-          position: driver.position,
-          max_load_kg: vehicle.max_load_kg,
-          current_load_kg: vehicle.current_load_kg,
-        }
-      }).filter((vehicle) => vehicle.id || vehicle.registration_number) : module === 'Fleets' ? Array.from(records.reduce((fleets, driver) => {
-        const fleet = driver.fleet && typeof driver.fleet === 'object' ? driver.fleet as ApiRecord : {}
-        const id = String(fleet.id || driver.fleet_id || 'unassigned')
-        const current = fleets.get(id) || { id, name: fleet.name || driver.fleet_name || 'Unassigned', status: fleet.status || 'active', drivers: 0, vehicles: 0, service_area: fleet.service_area || driver.service_area || '—' }
-        current.drivers = Number(current.drivers) + 1
-        if (driver.vehicle || driver.vehicle_id) current.vehicles = Number(current.vehicles) + 1
-        fleets.set(id, current)
-        return fleets
-      }, new Map<string, ApiRecord>()).values()) : records)
+      if (!cancelled) setRows(module === 'Vehicles' ? records.map(vehicle => ({ ...vehicle, registration_number: vehicle.registration_number || vehicle.plate_number, driver_id: vehicle.driver_id || vehicle.driver_uuid })) : records)
     }
     load().catch(value => {
       if (cancelled) return

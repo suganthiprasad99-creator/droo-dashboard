@@ -1,3 +1,3 @@
-import { RecordsPage } from '@/features/records/records-page'
+import { FleetRecordsPage } from '@/features/records/fleet-records-page'
 
-export default function Page() { return <RecordsPage module="Fleets" /> }
+export default function Page() { return <FleetRecordsPage /> }

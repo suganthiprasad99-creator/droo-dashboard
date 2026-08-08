@@ -8,8 +8,10 @@ import {
   FileText, Globe2, HelpCircle, IdCard, Inbox,
   CalendarDays, Home, Keyboard, KeyRound, Layers3, LogOut, Menu, MessageSquare, MoreHorizontal, Moon, Network, Package,
   Landmark, PanelLeft, Plus, Radio, ReceiptText, Rocket, Search, Settings2, Shield, SlidersHorizontal, Store,
-  Sun, Truck, Unplug, UserRound, Users, UsersRound, Webhook, Workflow, Wrench, X,
+  Sun, Truck, Unplug, UserRound, Users, UsersRound, WalletCards, Webhook, Workflow, Wrench, X,
 } from 'lucide-react'
+import { useApiData } from '@/hooks/use-api-data'
+import type { ApiRecord } from '@/types/dashboard'
 
 const sidebarGroups = [
   { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
@@ -43,9 +45,9 @@ const storefrontItems = [
 
 const ledgerItems = [
   ['Dashboard', '/ledger', BarChart3],
-  ['Billing', '/ledger?view=billing', ReceiptText],
-  ['Payments', '/ledger?view=payments', CreditCard],
-  ['Accounting', '/ledger?view=accounting', Calculator],
+  ['Billing', '/ledger/billing/invoices', ReceiptText],
+  ['Payments', '/ledger/payments/transactions', CreditCard],
+  ['Accounting', '/ledger/accounting/accounts', Calculator],
   ['Reports', '/earnings', Landmark],
   ['Settings', '/ledger?view=settings', Settings2],
 ] as const
@@ -68,6 +70,41 @@ const developerItems = [
 ] as const
 
 type OpenMenu = 'organization' | 'user' | 'notifications' | 'locale' | 'chat' | 'more' | 'customize' | 'shortcuts' | null
+type ResourceTab = 'Fleets' | 'Drivers' | 'Vehicles'
+
+function SidebarResources() {
+  const [resourceTab, setResourceTab] = useState<ResourceTab>('Fleets')
+  const [resourceFilter, setResourceFilter] = useState('')
+  const { rows: drivers, loading: driversLoading, error: driversError } = useApiData('Drivers', 30_000)
+  const { rows: vehicles, loading: vehiclesLoading, error: vehiclesError } = useApiData('Vehicles', 30_000)
+  const { rows: fleets, loading: fleetsLoading, error: fleetsError } = useApiData('Fleets', 30_000)
+  const { rows: liveDrivers, loading: liveLoading, error: liveError } = useApiData('Live Operations', 15_000)
+  const onlineDriverIDs = new Set(liveDrivers.map(row => String(((row.driver || {}) as ApiRecord).id || row.id || '')))
+  const onlineVehicleCount = vehicles.filter(vehicle => onlineDriverIDs.has(String(vehicle.driver_id || ''))).length
+  const rows = resourceTab === 'Drivers' ? drivers : resourceTab === 'Vehicles' ? vehicles : fleets
+  const loading = resourceTab === 'Drivers' ? driversLoading : resourceTab === 'Vehicles' ? vehiclesLoading : fleetsLoading
+  const error = resourceTab === 'Drivers' ? driversError : resourceTab === 'Vehicles' ? vehiclesError : fleetsError
+  const query = resourceFilter.trim().toLowerCase()
+  const visibleRows = rows.filter(row => !query || JSON.stringify(row).toLowerCase().includes(query)).slice(0, 6)
+  const href = resourceTab === 'Drivers' ? '/drivers' : resourceTab === 'Vehicles' ? '/vehicles' : '/fleets'
+  const Icon = resourceTab === 'Fleets' ? Users : resourceTab === 'Drivers' ? Truck : Car
+
+  function title(row: ApiRecord) {
+    return String(resourceTab === 'Drivers' ? row.name || row.phone || row.id : resourceTab === 'Vehicles' ? row.registration_number || row.name || row.id : row.name || row.id)
+  }
+  function detail(row: ApiRecord) {
+    if (resourceTab === 'Drivers') return onlineDriverIDs.has(String(row.id)) ? 'Online' : String(row.status || 'Offline')
+    if (resourceTab === 'Vehicles') return `${String(row.assigned_driver || row.driver_uuid || 'Unassigned')} · ${onlineDriverIDs.has(String(row.driver_id || '')) ? 'Online' : String(row.status || 'Offline')}`
+    return `${Number(row.drivers || 0)} drivers · ${Number(row.vehicles || 0)} vehicles`
+  }
+
+  return <>
+    <div className="live-operations-summary"><strong>LIVE OPERATIONS</strong><span><i className="online" />{liveLoading ? '—' : liveError ? 'Unavailable' : liveDrivers.length} drivers online</span><span><i />{liveLoading || vehiclesLoading ? '—' : liveError || vehiclesError ? 'Unavailable' : onlineVehicleCount} vehicles online</span></div>
+    <div className="resource-tabs">{(['Fleets', 'Drivers', 'Vehicles'] as const).map(tab => <button key={tab} className={resourceTab === tab ? 'active' : ''} onClick={() => { setResourceTab(tab); setResourceFilter('') }}>{tab}</button>)}</div>
+    <label className="resource-filter"><Search /><input value={resourceFilter} onChange={event => setResourceFilter(event.target.value)} placeholder="Filter resources…" aria-label={`Filter ${resourceTab.toLowerCase()}`} /></label>
+    {visibleRows.length ? <div className="sidebar-resource-list">{visibleRows.map((row, index) => <Link href={href} key={String(row.id || index)}><Icon /><span><strong>{title(row)}</strong><small>{detail(row)}</small></span></Link>)}</div> : <div className="resource-empty"><Icon /><strong>{loading ? `Loading ${resourceTab.toLowerCase()}…` : error ? `${resourceTab} unavailable` : query ? `No matching ${resourceTab.toLowerCase()}` : `No ${resourceTab.toLowerCase()} yet`}</strong><span>{error || (resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`)}</span></div>}
+  </>
+}
 
 export function AppShell({ children, homeMode = false }: { children: React.ReactNode; homeMode?: boolean }) {
   const pathname = usePathname()
@@ -81,10 +118,9 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [locale, setLocale] = useState('English')
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(null)
-  const initialProduct = pathname === '/storefront' ? 'Storefront' : pathname === '/ledger' ? 'Ledger' : pathname === '/iam' ? 'IAM' : pathname === '/developers' ? 'Developers' : 'Fleet-Ops'
+  const initialProduct = pathname.startsWith('/storefront') ? 'Storefront' : pathname.startsWith('/ledger') ? 'Ledger' : pathname.startsWith('/iam') ? 'IAM' : pathname.startsWith('/developers') ? 'Developers' : 'Fleet-Ops'
   const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
   const [activeProduct, setActiveProduct] = useState(initialProduct)
-  const [resourceTab, setResourceTab] = useState<'Fleets' | 'Drivers' | 'Vehicles'>('Fleets')
 
   useEffect(() => {
     const storedTheme = localStorage.getItem('droo-theme')
@@ -161,7 +197,21 @@ export function AppShell({ children, homeMode = false }: { children: React.React
           <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Ledger..." /><kbd>Cmd K</kbd></label>
         </div>
         <nav className="ledger-sidebar-nav" aria-label="Ledger navigation">
-          {ledgerItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+          {pathname.startsWith('/ledger/billing') ? <>
+            <Link href="/ledger" className="ledger-sidebar-back"><ChevronDown /><span>Billing</span></Link>
+            <Link href="/ledger/billing/invoices" className={pathname.endsWith('/invoices') ? 'active' : ''} aria-current={pathname.endsWith('/invoices') ? 'page' : undefined} onClick={() => setMobile(false)}><ReceiptText /><span>Invoices</span></Link>
+            <Link href="/ledger/billing/invoice-templates" className={pathname.endsWith('/invoice-templates') ? 'active' : ''} aria-current={pathname.endsWith('/invoice-templates') ? 'page' : undefined} onClick={() => setMobile(false)}><FileText /><span>Invoice Templates</span></Link>
+          </> : pathname.startsWith('/ledger/payments') ? <>
+            <Link href="/ledger" className="ledger-sidebar-back"><ChevronDown /><span>Payments</span></Link>
+            <Link href="/ledger/payments/transactions" className={pathname.includes('/transactions') ? 'active' : ''} aria-current={pathname.includes('/transactions') ? 'page' : undefined} onClick={() => setMobile(false)}><CreditCard /><span>Transactions</span></Link>
+            <Link href="/ledger/payments/wallets" onClick={() => setMobile(false)}><WalletCards /><span>Wallets</span></Link>
+            <Link href="/ledger/payments/gateways" onClick={() => setMobile(false)}><Landmark /><span>Gateways</span></Link>
+          </> : pathname.startsWith('/ledger/accounting') ? <>
+            <Link href="/ledger" className="ledger-sidebar-back"><ChevronDown /><span>Accounting</span></Link>
+            <Link href="/ledger/accounting/accounts" className={pathname.includes('/accounts') ? 'active' : ''} aria-current={pathname.includes('/accounts') ? 'page' : undefined} onClick={() => setMobile(false)}><Network /><span>Chart of Accounts</span></Link>
+            <Link href="/ledger/accounting/journal" className={pathname.includes('/journal') ? 'active' : ''} aria-current={pathname.includes('/journal') ? 'page' : undefined} onClick={() => setMobile(false)}><BookOpen /><span>Journal Entries</span></Link>
+            <Link href="/ledger/accounting/general-ledger" className={pathname.includes('/general-ledger') ? 'active' : ''} aria-current={pathname.includes('/general-ledger') ? 'page' : undefined} onClick={() => setMobile(false)}><FileText /><span>General Ledger</span></Link>
+          </> : ledgerItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
             const isActive = label === 'Dashboard' && pathname === '/ledger'
             return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{label !== 'Dashboard' && <ChevronDown />}</Link>
           })}
@@ -216,10 +266,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         })}
       </nav>
       {(!currentSidebarGroup || currentSidebarGroup === 'Operations') && <footer className="fleet-sidebar-footer">
-        <div className="live-operations-summary"><strong>LIVE OPERATIONS</strong><span><i className="online" />10 drivers online</span><span><i />10 vehicles online</span></div>
-        <div className="resource-tabs">{(['Fleets', 'Drivers', 'Vehicles'] as const).map((tab) => <button key={tab} className={resourceTab === tab ? 'active' : ''} onClick={() => setResourceTab(tab)}>{tab}</button>)}</div>
-        <div className="resource-filter"><Search />Filter resources...</div>
-        <div className="resource-empty">{resourceTab === 'Fleets' ? <Users /> : resourceTab === 'Drivers' ? <Truck /> : <Car />}<strong>No {resourceTab.toLowerCase()} yet</strong><span>{resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`}</span></div>
+        <SidebarResources />
       </footer>}
       </>}
     </aside>}
