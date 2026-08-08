@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowUpRight, Ban, Building2, CarFront, Contact, ExternalLink, Eye, Filter, Layers3, LayoutDashboard, List, Map as MapIcon, MapPin, MoreHorizontal, Navigation, Paperclip, Pencil, Play, Plus, Radio, RefreshCw, Route, Search, Send, SkipBack, SkipForward, SlidersHorizontal, Square, Table2, Trash2, Truck, Upload, UserMinus, UserRound, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Ban, Binoculars, Building2, CarFront, Contact, ExternalLink, Eye, Filter, Layers3, LayoutDashboard, List, Map as MapIcon, MapPin, MoreHorizontal, Navigation, Paperclip, Pencil, Play, Plus, Radio, RefreshCw, Route, Search, Send, SkipBack, SkipForward, SlidersHorizontal, Square, Table2, Trash2, Truck, Upload, UserMinus, UserRound, X, Zap } from 'lucide-react'
 import { useApiData } from '@/hooks/use-api-data'
 import { GoogleLiveMap } from '@/components/google-live-map'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -135,8 +135,12 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
   const [chatMessages, setChatMessages] = useState<string[]>([])
   const [mapOrdersOpen, setMapOrdersOpen] = useState(false)
   const [mapOrderSearch, setMapOrderSearch] = useState('')
+  const [mapSearchOpen, setMapSearchOpen] = useState(false)
+  const [mapSearch, setMapSearch] = useState('')
+  const [alternateMapStyle, setAlternateMapStyle] = useState(false)
   const [mapCommand, setMapCommand] = useState<{ type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type'; nonce: number }>()
   const resourceSearchRef = useRef<HTMLInputElement>(null)
+  const mapSearchRef = useRef<HTMLInputElement>(null)
   const mapDragStart = useRef<{ y: number; height: number } | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -264,6 +268,11 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     const id = String(((row.driver || {}) as ApiRecord).id || row.id || index)
     return showSelectedRoute && id === mapSelected && selectedRoutePositions.length ? { ...row, route_positions: selectedRoutePositions } : row
   }), [baseMapRows, mapSelected, selectedRoutePositions, showSelectedRoute])
+  const mapSearchResults = useMemo(() => {
+    const query = mapSearch.trim().toLowerCase()
+    if (!query) return mapRows.slice(0, 6)
+    return mapRows.filter(row => JSON.stringify(row).toLowerCase().includes(query)).slice(0, 6)
+  }, [mapRows, mapSearch])
   const selectedMaxLoadKg = Number(selectedVehicle?.max_load_kg)
   const selectedCurrentLoadKg = Number(selectedVehicle?.current_load_kg)
   const hasCapacityData = Number.isFinite(selectedMaxLoadKg) && selectedMaxLoadKg > 0 && Number.isFinite(selectedCurrentLoadKg) && selectedCurrentLoadKg >= 0
@@ -448,7 +457,23 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
       <section className="operations-map-stage order-map-stage" style={{ height: mapHeight }}>
         <GoogleLiveMap rows={mapRows} selected={mapSelected} onSelect={select} command={mapCommand} markerStyle="truck" showStopMarkers={false} />
         <div className="map-zoom"><button aria-label="Zoom in" onClick={() => issueMapCommand('zoom-in')}>+</button><button aria-label="Zoom out" onClick={() => issueMapCommand('zoom-out')}>−</button></div>
-        <div className="map-tools"><button aria-label="Locate" onClick={() => issueMapCommand('locate')}><Navigation /></button><button aria-label="Search map" onClick={() => resourceSearchRef.current?.focus()}><Search /></button><button aria-label={`Orders: ${activeMapOrders.length}`} aria-expanded={mapOrdersOpen} onClick={() => setMapOrdersOpen(value => !value)}><Layers3 /><i>{activeMapOrders.length}</i></button><button aria-label="Map view" onClick={() => issueMapCommand('toggle-type')}><MapIcon /></button><button aria-label="View first position" onClick={() => { const first = liveFiltered[0]; if (first) select(String(((first.driver || {}) as Record<string, unknown>).id || first.id || 0)) }}><Eye /></button></div>
+        <div className="map-tools">
+          <button className={`map-create-order${composeOpen ? ' is-active' : ''}`} aria-label="Create Order" aria-pressed={composeOpen} data-tooltip="Create Order" onClick={() => setComposeOpen(value => !value)}><Send /></button>
+          <button className={mapSearchOpen ? 'active' : ''} aria-label="Search map" aria-expanded={mapSearchOpen} data-tooltip="Search map" onClick={() => { setMapSearchOpen(value => !value); setMapOrdersOpen(false); window.setTimeout(() => mapSearchRef.current?.focus(), 0) }}><Search /></button>
+          <button className={mapOrdersOpen ? 'active' : ''} aria-label={`Orders: ${activeMapOrders.length}`} aria-expanded={mapOrdersOpen} data-tooltip="Order layers" onClick={() => { setMapOrdersOpen(value => !value); setMapSearchOpen(false) }}><Layers3 /><i>{activeMapOrders.length}</i></button>
+          <button className={alternateMapStyle ? 'active' : ''} aria-label="Change map style" aria-pressed={alternateMapStyle} data-tooltip="Map style" onClick={() => { issueMapCommand('toggle-type'); setAlternateMapStyle(value => !value) }}><MapIcon /></button>
+          <button aria-label="Fit all live positions" data-tooltip="Fit all positions" onClick={() => issueMapCommand('locate')}><Eye /></button>
+          <button aria-label="Explore first live vehicle" data-tooltip="Explore vehicles" onClick={() => { const first = mapRows[0]; if (!first) { setResourceView('Vehicles'); setActionNotice('No live vehicle positions are available yet.'); return }; const id = String(((first.driver || {}) as ApiRecord).id || first.id || ''); setResourceView('Vehicles'); setSelected(id); issueMapCommand('locate') }}><Binoculars /></button>
+        </div>
+        {mapSearchOpen && <aside className="map-search-panel" aria-label="Search live map">
+          <header><Search /><input ref={mapSearchRef} value={mapSearch} onChange={event => setMapSearch(event.target.value)} placeholder="Search vehicles or drivers…" /><button aria-label="Close map search" onClick={() => setMapSearchOpen(false)}><X /></button></header>
+          <div>{mapSearchResults.map((row, index) => {
+            const record = row as ApiRecord
+            const driver = (row.driver || {}) as ApiRecord
+            const id = String(driver.id || row.id || index)
+            return <button key={id} onClick={() => { select(id); setMapSearchOpen(false) }}><Navigation /><span><strong>{String(driver.name || record.registration_number || record.name || `Vehicle ${index + 1}`)}</strong><small>{String(record.registration_number || driver.id || id)}</small></span></button>
+          })}{mapSearchResults.length === 0 && <p>No matching live positions.</p>}</div>
+        </aside>}
         {mapOrdersOpen && <aside className="map-orders-drawer" aria-label="Orders">
           <header><label><Search /><input autoFocus value={mapOrderSearch} onChange={event => setMapOrderSearch(event.target.value)} placeholder="Search orders..." /></label><button aria-label="More order options"><MoreHorizontal /></button><button aria-label="Close active orders" onClick={() => setMapOrdersOpen(false)}><X /></button></header>
           <div className="map-orders-heading"><strong>ORDERS</strong><b>{activeMapOrders.length} ORDERS</b></div>

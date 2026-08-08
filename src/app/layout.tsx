@@ -4,6 +4,7 @@ import "./globals.css";
 import "./ledger.css";
 import "./maintenance-schedules.css";
 import "./scheduler-shift-card.css";
+import "./fleet-settings.css";
 import "./vehicle-delete-dialog.css";
 import "./vehicle-metadata.css";
 
