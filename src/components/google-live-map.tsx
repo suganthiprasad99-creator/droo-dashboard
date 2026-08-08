@@ -8,6 +8,8 @@ type ApiRecord = Record<string, unknown>
 type MapCommand = { type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type'; nonce: number }
 
 const defaultCenter = { lat: 11.1271, lng: 78.6569 }
+const streetTiles = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const terrainTiles = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
 
 export function GoogleLiveMap({ rows, selected, onSelect, command, markerStyle = 'arrow', showStopMarkers = true }: { rows: ApiRecord[]; selected: string | null; onSelect: (id: string) => void; command?: MapCommand; markerStyle?: 'arrow' | 'truck'; showStopMarkers?: boolean }) {
   const element = useRef<HTMLDivElement>(null)
@@ -38,7 +40,10 @@ export function GoogleLiveMap({ rows, selected, onSelect, command, markerStyle =
         markerZoomAnimation: false,
       })
       map.current = instance
-      baseLayer.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(instance)
+      baseLayer.current = L.tileLayer(alternateTiles.current ? terrainTiles : streetTiles, {
+        maxZoom: alternateTiles.current ? 17 : 19,
+        attribution: alternateTiles.current ? '&copy; OpenTopoMap contributors' : '&copy; OpenStreetMap contributors',
+      }).addTo(instance)
       const bounds: [number, number][] = []
       rows.forEach((row, index) => {
         const driver = (row.driver || {}) as ApiRecord
@@ -126,7 +131,7 @@ export function GoogleLiveMap({ rows, selected, onSelect, command, markerStyle =
       import('leaflet').then(L => {
         if (baseLayer.current) instance.removeLayer(baseLayer.current)
         alternateTiles.current = !alternateTiles.current
-        baseLayer.current = L.tileLayer(alternateTiles.current ? 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: alternateTiles.current ? 17 : 19, attribution: alternateTiles.current ? '&copy; OpenTopoMap contributors' : '&copy; OpenStreetMap contributors' }).addTo(instance).bringToBack()
+        baseLayer.current = L.tileLayer(alternateTiles.current ? terrainTiles : streetTiles, { maxZoom: alternateTiles.current ? 17 : 19, attribution: alternateTiles.current ? '&copy; OpenTopoMap contributors' : '&copy; OpenStreetMap contributors' }).addTo(instance).bringToBack()
       })
     }
   }, [command])

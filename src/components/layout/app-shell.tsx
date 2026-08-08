@@ -13,6 +13,7 @@ import {
 import { useApiData } from '@/hooks/use-api-data'
 import type { ApiRecord } from '@/types/dashboard'
 import { listDashboardState, putDashboardState } from '@/lib/dashboard-state'
+import { ComposeDialog } from '@/components/ui/compose-dialog'
 
 const sidebarGroups = [
   { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
@@ -20,7 +21,7 @@ const sidebarGroups = [
   { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues?view=maintenance'], ['Schedules', '/issues?view=schedules'], ['Work Orders', '/issues?view=work-orders'], ['Maintenances', '/issues?view=maintenances'], ['Equipment', '/issues?view=equipment'], ['Parts', '/issues?view=parts']] },
   { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations'], ['Fuel Providers', '/integrations'], ['Devices', '/integrations'], ['Sensors', '/integrations'], ['Events', '/integrations']] },
   { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/earnings']] },
-  { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/settings'], ['Navigator App', '/settings'], ['Map', '/service-areas'], ['Payments', '/earnings'], ['Notifications', '/settings'], ['Routing', '/settings'], ['Orchestrator', '/settings'], ['Scheduling', '/settings'], ['Custom Fields', '/settings'], ['Avatars', '/settings']] },
+  { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/fleet-ops/settings'], ['Navigator App', '/fleet-ops/settings/navigator-app'], ['Map', '/fleet-ops/settings/map'], ['Payments', '/fleet-ops/settings/payments'], ['Notifications', '/fleet-ops/settings/notifications'], ['Routing', '/fleet-ops/settings/routing'], ['Orchestrator', '/fleet-ops/settings/orchestrator'], ['Scheduling', '/fleet-ops/settings/scheduling'], ['Custom Fields', '/fleet-ops/settings/custom-fields'], ['Avatars', '/fleet-ops/settings/avatars']] },
 ] as const
 
 const sidebarItemIcons: Record<string, typeof Home> = {
@@ -37,7 +38,7 @@ const sidebarItemIcons: Record<string, typeof Home> = {
 }
 
 const products = [
-  ['Fleet-Ops', '/orchestrator', Workflow, 'Operations'],
+  ['Fleet-Ops', '/orders', Workflow, 'Operations'],
   ['Storefront', '/storefront', BriefcaseBusiness, 'Storefront'],
   ['Ledger', '/ledger', Calculator, 'Ledger'],
   ['IAM', '/iam', Shield, 'IAM'],
@@ -146,16 +147,18 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [mobile, setMobile] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
+  const [composeOrderOpen, setComposeOrderOpen] = useState(false)
   const [locale, setLocale] = useState('English')
   const maintenanceLabels: Record<string, string> = { maintenance: 'Maintenance Hub', schedules: 'Schedules', 'work-orders': 'Work Orders', maintenances: 'Maintenances', equipment: 'Equipment', parts: 'Parts' }
   const initialMaintenanceItem = pathname === '/issues' ? maintenanceLabels[searchParams.get('view') || ''] ?? null : null
   const resourceLabels: Record<string, string> = { '/overview': 'Resources Hub', '/drivers': 'Drivers', '/vehicles': 'Vehicles', '/fleets': 'Fleets', '/service-areas': 'Places' }
   const initialResourceItem = resourceLabels[pathname] ?? null
   const [sidebarSearch, setSidebarSearch] = useState('')
-  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : null)
+  const initialSettingsItem = pathname.startsWith('/fleet-ops/settings') ? 'Settings' : null
+  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialSettingsItem)
   const [, setSelectedSidebarItem] = useState<string | null>(initialMaintenanceItem || initialResourceItem)
   const initialProduct = pathname.startsWith('/storefront') ? 'Storefront' : pathname.startsWith('/ledger') ? 'Ledger' : pathname.startsWith('/iam') ? 'IAM' : pathname.startsWith('/developers') ? 'Developers' : 'Fleet-Ops'
-  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
+  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialSettingsItem || (initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct))
   const [activeProduct, setActiveProduct] = useState(initialProduct)
   const sidebarItemActive = (href: string) => {
     const [targetPath, query = ''] = href.split('?')
@@ -306,7 +309,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         <footer className="developers-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
       </> : <>
       <div className="fleet-sidebar-actions">
-        <Link href="/orders" className="create-order-action" onClick={() => setMobile(false)}><Send /><span>Create new order</span></Link>
+        <button className="create-order-action" type="button" onClick={() => { setComposeOrderOpen(true); setMobile(false) }}><Send /><span>Create new order</span></button>
         <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Fleet-Ops..." /><kbd>Cmd K</kbd></label>
       </div>
       <nav className="fleet-sidebar-nav">
@@ -335,6 +338,11 @@ export function AppShell({ children, homeMode = false }: { children: React.React
               setSelectedSidebarItem('Maintenance Hub')
               setMobile(false)
               router.push('/issues?view=maintenance')
+            }
+            if (name === 'Settings') {
+              setSelectedSidebarItem('Settings Hub')
+              setMobile(false)
+              router.push('/fleet-ops/settings')
             }
           }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronRight /></button>
         })}
@@ -430,5 +438,6 @@ export function AppShell({ children, homeMode = false }: { children: React.React
       </header>
       <main>{children}</main>
     </section>
+    {composeOrderOpen && <ComposeDialog module="Orders" label="Create a new order" onClose={() => setComposeOrderOpen(false)} />}
   </div>
 }
