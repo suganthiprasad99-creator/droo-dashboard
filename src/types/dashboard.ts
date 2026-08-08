@@ -9,6 +9,7 @@ export type ModuleName =
   | 'Service Areas'
   | 'Pricing'
   | 'Earnings'
+  | 'Reports'
   | 'Integrations'
   | 'Issues'
   | 'Organization Settings'

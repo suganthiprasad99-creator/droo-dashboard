@@ -11,6 +11,7 @@ export const modules: Record<ModuleName, ModuleConfig> = {
   'Service Areas': { name: 'Service Areas', description: 'Define operational coverage with polygon boundaries.', apiPath: '/admin/service-areas', actionLabel: 'New service area' },
   Pricing: { name: 'Pricing', description: 'Manage delivery pricing and rider revenue share.', apiPath: '/admin/pricing-rules', actionLabel: 'New pricing rule' },
   Earnings: { name: 'Earnings', description: 'Review rider ledger entries and adjustments.', apiPath: '/admin/earnings' },
+  Reports: { name: 'Reports', description: 'Review and export operational, financial, and fleet reporting data.', apiPath: '/admin/earnings' },
   Integrations: { name: 'Integrations', description: 'Manage webhook subscriptions and API connections.', apiPath: '/webhook-endpoints', actionLabel: 'Add endpoint' },
   Issues: { name: 'Issues', description: 'Review delivery incidents reported by riders.' },
   'Organization Settings': { name: 'Organization Settings', description: 'Organization identity, memberships and access policy.' },

@@ -17,10 +17,10 @@ import { ComposeDialog } from '@/components/ui/compose-dialog'
 
 const sidebarGroups = [
   { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
-  { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/earnings'], ['Issues', '/issues']] },
+  { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/fuel-transactions'], ['Issues', '/issues']] },
   { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues?view=maintenance'], ['Schedules', '/issues?view=schedules'], ['Work Orders', '/issues?view=work-orders'], ['Maintenances', '/issues?view=maintenances'], ['Equipment', '/issues?view=equipment'], ['Parts', '/issues?view=parts']] },
-  { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations'], ['Fuel Providers', '/integrations'], ['Devices', '/integrations'], ['Sensors', '/integrations'], ['Events', '/integrations']] },
-  { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/earnings']] },
+  { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations?view=telematics'], ['Fuel Integrations', '/integrations?view=fuel-Integrations'], ['Devices', '/integrations?view=devices'], ['Sensors', '/integrations?view=sensors'], ['Events', '/integrations?view=events']] },
+  { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/reports']] },
   { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/fleet-ops/settings'], ['Navigator App', '/fleet-ops/settings/navigator-app'], ['Map', '/fleet-ops/settings/map'], ['Payments', '/fleet-ops/settings/payments'], ['Notifications', '/fleet-ops/settings/notifications'], ['Routing', '/fleet-ops/settings/routing'], ['Orchestrator', '/fleet-ops/settings/orchestrator'], ['Scheduling', '/fleet-ops/settings/scheduling'], ['Custom Fields', '/fleet-ops/settings/custom-fields'], ['Avatars', '/fleet-ops/settings/avatars']] },
 ] as const
 
@@ -31,7 +31,7 @@ const sidebarItemIcons: Record<string, typeof Home> = {
   'Route Efficiency': BarChart3, Scheduler: CalendarDays, 'Order Config': SlidersHorizontal,
   'Service Rates': ReceiptText, 'Maintenance Hub': Wrench, Schedules: CalendarDays,
   'Work Orders': FileText, Maintenances: Wrench, Equipment: Truck, Parts: Package,
-  Telematics: Radio, 'Fuel Providers': Fuel, Devices: Radio, Sensors: Gauge, Events: Bell,
+  Telematics: Radio, 'Fuel Providers': Fuel, 'Fuel Integrations': Fuel, Devices: Radio, Sensors: Gauge, Events: Bell,
   Dashboard: BarChart3, Reports: FileText, 'Settings Hub': Settings2, 'Navigator App': Send,
   Map: MapPin, Payments: CreditCard, Notifications: Bell, Routing: Workflow,
   Scheduling: CalendarDays, 'Custom Fields': SlidersHorizontal, Avatars: UserRound,
@@ -77,7 +77,7 @@ const ledgerItems = [
   ['Billing', '/ledger/billing/invoices', ReceiptText],
   ['Payments', '/ledger/payments/transactions', CreditCard],
   ['Accounting', '/ledger/accounting/accounts', Calculator],
-  ['Reports', '/earnings', Landmark],
+  ['Reports', '/reports', Landmark],
   ['Settings', '/ledger?view=settings', Settings2],
 ] as const
 
@@ -143,7 +143,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const searchParams = useSearchParams()
   const router = useRouter()
   const menusRef = useRef<HTMLElement>(null)
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(() => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'))
   const [mobile, setMobile] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
@@ -151,14 +151,19 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [locale, setLocale] = useState('English')
   const maintenanceLabels: Record<string, string> = { maintenance: 'Maintenance Hub', schedules: 'Schedules', 'work-orders': 'Work Orders', maintenances: 'Maintenances', equipment: 'Equipment', parts: 'Parts' }
   const initialMaintenanceItem = pathname === '/issues' ? maintenanceLabels[searchParams.get('view') || ''] ?? null : null
-  const resourceLabels: Record<string, string> = { '/overview': 'Resources Hub', '/drivers': 'Drivers', '/vehicles': 'Vehicles', '/fleets': 'Fleets', '/service-areas': 'Places' }
-  const initialResourceItem = resourceLabels[pathname] ?? null
+  const routeSidebarSelection = sidebarGroups.flatMap(group => group.items.map(([label, href]) => {
+    const [targetPath, query = ''] = href.split('?')
+    const targetParams = new URLSearchParams(query)
+    const matches = pathname === targetPath && Array.from(targetParams.entries()).every(([key, value]) => searchParams.get(key) === value)
+    return { group: group.name, label, matches, score: Array.from(targetParams.keys()).length }
+  })).filter(item => item.matches).sort((a, b) => b.score - a.score)[0]
+  const initialRouteGroup = routeSidebarSelection?.group ?? (initialMaintenanceItem ? 'Maintenance' : null)
+  const initialRouteItem = routeSidebarSelection?.label ?? initialMaintenanceItem
   const [sidebarSearch, setSidebarSearch] = useState('')
-  const initialSettingsItem = pathname.startsWith('/fleet-ops/settings') ? 'Settings' : null
-  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialSettingsItem)
-  const [, setSelectedSidebarItem] = useState<string | null>(initialMaintenanceItem || initialResourceItem)
+  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialRouteGroup)
+  const [, setSelectedSidebarItem] = useState<string | null>(initialRouteItem)
   const initialProduct = pathname.startsWith('/storefront') ? 'Storefront' : pathname.startsWith('/ledger') ? 'Ledger' : pathname.startsWith('/iam') ? 'IAM' : pathname.startsWith('/developers') ? 'Developers' : 'Fleet-Ops'
-  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialSettingsItem || (initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct))
+  const [activeSidebarGroup, setActiveSidebarGroup] = useState<string>(initialRouteGroup ?? (initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct))
   const [activeProduct, setActiveProduct] = useState(initialProduct)
   const sidebarItemActive = (href: string) => {
     const [targetPath, query = ''] = href.split('?')
@@ -173,8 +178,8 @@ export function AppShell({ children, homeMode = false }: { children: React.React
       if (cancelled) return
       const saved = entries.find(entry => entry.key === 'preferences')?.value
       const useDark = saved?.dark ?? window.matchMedia('(prefers-color-scheme: dark)').matches
-      setDark(useDark); setCollapsed(Boolean(saved?.collapsed)); setLocale(saved?.locale || 'English'); document.documentElement.classList.toggle('dark', useDark)
-    }).catch(() => { const useDark = window.matchMedia('(prefers-color-scheme: dark)').matches; setDark(useDark); document.documentElement.classList.toggle('dark', useDark) })
+      setDark(useDark); setCollapsed(Boolean(saved?.collapsed)); setLocale(saved?.locale || 'English'); document.documentElement.classList.toggle('dark', useDark); document.documentElement.style.colorScheme = useDark ? 'dark' : 'light'; localStorage.setItem('droo-theme', useDark ? 'dark' : 'light')
+    }).catch(() => { const useDark = document.documentElement.classList.contains('dark'); setDark(useDark) })
     return () => { cancelled = true }
   }, [])
 
@@ -206,6 +211,8 @@ export function AppShell({ children, homeMode = false }: { children: React.React
     const next = !dark
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
+    document.documentElement.style.colorScheme = next ? 'dark' : 'light'
+    localStorage.setItem('droo-theme', next ? 'dark' : 'light')
     savePreferences({ dark: next, collapsed, locale })
   }
 
