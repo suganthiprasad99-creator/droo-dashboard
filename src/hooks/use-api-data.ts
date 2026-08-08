@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import type { ApiRecord, ModuleName } from '@/types/dashboard'
 import { modules } from '@/lib/dashboard-config'
 
-const ACCESS_TOKEN_KEY = 'droo.dev_access_token.v2'
-const REFRESH_TOKEN_KEY = 'droo.dev_refresh_token.v2'
+const ACCESS_TOKEN_KEY = 'droo.dev_access_token.v3'
+const REFRESH_TOKEN_KEY = 'droo.dev_refresh_token.v3'
 
 const demoRows: Partial<Record<ModuleName, ApiRecord[]>> = {
   'Live Operations': [
@@ -51,7 +51,7 @@ let activeDevLogin: Promise<string> | null = null
 
 async function performDevLogin() {
   const phone = process.env.NEXT_PUBLIC_DEV_LOGIN_PHONE || '+916369487527'
-  const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, purpose: 'login' }) })
+  const challengeResponse = await fetch('/v1/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, purpose: 'login', device_fingerprint: 'droo-dashboard-dev' }) })
   if (!challengeResponse.ok) throw new Error(`Development login request failed (${challengeResponse.status})`)
   const challenge = await challengeResponse.json()
   const verification = await fetch('/v1/auth/otp/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challenge.challenge_id, code: '000000' }) })

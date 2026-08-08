@@ -6,6 +6,7 @@ import {
   AlertCircle, Archive, ArrowRight, Boxes, Check, ChevronDown, Copy, GitBranch, GripVertical,
   Layers3, LockKeyhole, Package, Plus, Save, Send, Settings2, Tag, Trash2, X,
 } from 'lucide-react'
+import { deleteDashboardState, listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 
 type ConfigTab = 'details' | 'fields' | 'flow' | 'entities'
 type FlowStep = {
@@ -101,8 +102,6 @@ const pharmacyConfig: OrderConfig = {
 }
 
 const seededConfigs = [groceryConfig, pharmacyConfig]
-const isArchivedLocally = (uuid: string) => typeof window !== 'undefined' && localStorage.getItem(`droo.order-config.archived.${uuid}`) !== null
-const activeSeededConfigs = () => seededConfigs.filter(item => !isArchivedLocally(item.uuid))
 
 const tabs: { id: ConfigTab; label: string; description: string; icon: typeof Settings2 }[] = [
   { id: 'details', label: 'Details', description: 'Identity and publishing', icon: Settings2 },
@@ -113,6 +112,13 @@ const tabs: { id: ConfigTab; label: string; description: string; icon: typeof Se
 
 function normalizeConfig(value: Partial<OrderConfig>): OrderConfig {
   return { ...demoConfig, ...value, uuid: value.uuid || newId(), tags: Array.isArray(value.tags) ? value.tags : [], meta: Array.isArray(value.meta) ? value.meta : [], entities: Array.isArray(value.entities) ? value.entities : [], flow: value.flow && typeof value.flow === 'object' ? value.flow : {} }
+}
+
+function blankConfig(): OrderConfig {
+  return {
+    uuid: newId(), name: '', namespace: '', description: '', key: '', status: 'draft', version: '', core_service: false,
+    tags: [], meta: [], entities: [], flow: {},
+  }
 }
 
 function validateConfig(config: OrderConfig): { message: string; tab: ConfigTab }[] {
@@ -127,13 +133,12 @@ function validateConfig(config: OrderConfig): { message: string; tab: ConfigTab 
 }
 
 async function requestConfigs(): Promise<OrderConfig[]> {
-  const response = await fetch('/int/v1/order-configs', { credentials: 'include', cache: 'no-store' })
-  if (!response.ok) throw new Error(`Unable to load configurations (${response.status})`)
-  const data = await response.json()
-  const rows: Partial<OrderConfig>[] = Array.isArray(data) ? data : data.order_configs || data.data || []
-  const seeds = activeSeededConfigs()
-  const liveConfigs = rows.map(normalizeConfig).filter(item => !isArchivedLocally(item.uuid))
-  return [...seeds, ...liveConfigs.filter(item => !seeds.some(seed => seed.uuid === item.uuid))]
+  const entries = await listDashboardState<OrderConfig>('order-configs')
+  if (!entries.length) {
+    await Promise.all(seededConfigs.map(config => putDashboardState('order-configs', config.uuid, config)))
+    return seededConfigs
+  }
+  return entries.map(entry => normalizeConfig(entry.value))
 }
 
 export function SettingsPage() {
@@ -162,10 +167,9 @@ export function SettingsPage() {
       setConfigs(rows)
       const match = rows.find(item => item.uuid === (requestedId || CONFIG_ID)) || rows[0]
       setSelectedId(match.uuid); setDraft(match)
-    }).catch(() => {
-      const availableSeeds = activeSeededConfigs()
-      const fallback = availableSeeds.find(item => item.uuid === requestedId) || availableSeeds[0] || seededConfigs[0]
-      setConfigs(availableSeeds.length ? availableSeeds : [fallback]); setSelectedId(fallback.uuid); setDraft(fallback); setError('Live configuration service is unavailable. Changes will be kept in this browser until the service reconnects.')
+    }).catch(value => {
+      const fallback = seededConfigs.find(item => item.uuid === requestedId) || seededConfigs[0]
+      setConfigs([fallback]); setSelectedId(fallback.uuid); setDraft(fallback); setError(value instanceof Error ? value.message : 'Unable to load configurations.')
     }).finally(() => !cancelled && setLoading(false))
     return () => { cancelled = true }
   }, [requestedId])
@@ -207,9 +211,8 @@ export function SettingsPage() {
 
   function createConfig() {
     if (dirty && !window.confirm('Discard unsaved changes and create a new configuration?')) return
-    const uuid = newId()
-    const next = normalizeConfig({ uuid, id: undefined, public_id: undefined, name: 'Untitled configuration', description: '', key: '', namespace: 'fleet-ops', status: 'draft', version: '0.1.0', core_service: false, tags: [], meta: [], entities: [], flow: { created: makeStep('created', 'Order Created', 'New order was created.') } })
-    setConfigs(current => [...current, next]); setSelectedId(uuid); setDraft(next); setDirty(true); setTab('details'); setError(''); setNotice('')
+    const next = blankConfig()
+    setConfigs(current => [...current, next]); setSelectedId(next.uuid); setDraft(next); setDirty(false); setTab('details'); setError(''); setNotice('')
   }
 
   function duplicateConfig() {
@@ -232,20 +235,22 @@ export function SettingsPage() {
     if (problems.length) { setError(problems.map(problem => problem.message).join(' ')); setTab(problems[0].tab); return false }
     setSaving(true)
     try {
-      const endpoint = config.id ? `/int/v1/order-configs/${config.uuid}` : '/int/v1/order-configs'
-      const response = await fetch(endpoint, { method: config.id ? 'PUT' : 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': newId() }, body: JSON.stringify(config) })
-      if (!response.ok) throw new Error(`Save failed (${response.status})`)
-      const body = response.status === 204 ? config : normalizeConfig(await response.json())
+      const entry = await putDashboardState('order-configs', config.uuid, config)
+      const body = normalizeConfig(entry.value)
       setDraft(body); setSelectedId(body.uuid); setConfigs(current => current.map(item => item.uuid === config.uuid ? body : item)); setDirty(false); setNotice(successMessage)
-    } catch {
-      localStorage.setItem(`droo.order-config.${config.uuid}`, JSON.stringify(config))
-      setDraft(config); setConfigs(current => current.map(item => item.uuid === config.uuid ? config : item)); setDirty(false); setNotice(`${successMessage} Stored locally until the live service reconnects.`)
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Unable to save configuration.')
+      return false
     } finally { setSaving(false) }
     return true
   }
 
   async function save() {
-    await persist(draft)
+    if (!await persist(draft)) return
+    const next = blankConfig()
+    setConfigs(current => current.some(item => item.uuid === next.uuid) ? current : [...current, next])
+    setSelectedId(next.uuid); setDraft(next); setDirty(false); setTab('details'); setTagInput('')
+    setStepEditor(null); setEntityEditor(null); setGroupEditor(null)
   }
 
   async function publishConfig() {
@@ -258,13 +263,7 @@ export function SettingsPage() {
     if (!window.confirm(`Archive “${draft.name}”? It will be removed from the active configuration list.`)) return
     if (configs.length === 1) { setError('Create another configuration before archiving the only active configuration.'); return }
     setSaving(true); setError(''); setNotice('')
-    if (draft.id) {
-      try {
-        const response = await fetch(`/int/v1/order-configs/${draft.uuid}`, { method: 'DELETE', credentials: 'include', headers: { 'Idempotency-Key': newId() } })
-        if (!response.ok && response.status !== 404) throw new Error(`Archive failed (${response.status})`)
-      } catch { /* The local archive marker below keeps the UI usable while offline. */ }
-    }
-    localStorage.setItem(`droo.order-config.archived.${draft.uuid}`, JSON.stringify(draft))
+    try { await deleteDashboardState('order-configs', draft.uuid) } catch (value) { setSaving(false); setError(value instanceof Error ? value.message : 'Unable to archive configuration.'); return }
     const remaining = configs.filter(item => item.uuid !== draft.uuid)
     const next = remaining[0]
     setConfigs(remaining); setDraft(next); setSelectedId(next.uuid); setDirty(false); setSaving(false); setNotice('Configuration archived.')

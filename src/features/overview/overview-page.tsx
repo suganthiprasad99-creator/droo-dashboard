@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardList, Copy, LayoutGrid, MapPin, Plus, RefreshCw, Route, Trash2, UserRound, Wrench, Zap } from 'lucide-react'
 import { DashboardGoogleMap } from '@/components/dashboard-google-map'
 import { useApiData } from '@/hooks/use-api-data'
+import { deleteDashboardState, listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 import type { ApiRecord } from '@/types/dashboard'
 
 const fallbackOrders = [
@@ -16,7 +17,6 @@ const fallbackOrders = [
 
 type LocalDashboard = { id: string; name: string; system: boolean }
 const defaultDashboard: LocalDashboard = { id: 'default', name: 'Default Dashboard', system: true }
-const dashboardStorageKey = 'droo.custom-dashboards.v1'
 const activeOrderStatuses = new Set(['assigned', 'enroute_pickup', 'arrived_pickup', 'picked_up', 'enroute_dropoff', 'arrived_dropoff'])
 
 function TrendChart({ kind }: { kind: 'delivery' | 'revenue' }) {
@@ -137,33 +137,26 @@ export function OverviewPage() {
   const currentDashboard = dashboards.find((dashboard) => dashboard.id === currentDashboardID) || defaultDashboard
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      try {
-        const saved = JSON.parse(localStorage.getItem(dashboardStorageKey) || '[]') as LocalDashboard[]
-        if (Array.isArray(saved)) setDashboards([defaultDashboard, ...saved.filter((dashboard) => dashboard.id !== 'default')])
-      } catch { /* Ignore invalid local development state. */ }
-    })
-    return () => cancelAnimationFrame(frame)
+    let cancelled = false
+    listDashboardState<LocalDashboard>('overview-dashboards').then(entries => { if (!cancelled) setDashboards([defaultDashboard, ...entries.map(entry => entry.value).filter(dashboard => dashboard.id !== 'default')]) }).catch(() => {})
+    return () => { cancelled = true }
   }, [])
 
-  const persistDashboards = (next: LocalDashboard[]) => {
-    setDashboards(next)
-    localStorage.setItem(dashboardStorageKey, JSON.stringify(next.filter((dashboard) => !dashboard.system)))
-  }
-
-  const createDashboard = () => {
+  const createDashboard = async () => {
     const name = newDashboardName.trim()
     if (!name) return
     const dashboard = { id: `dashboard_${Date.now()}`, name, system: false }
-    persistDashboards([...dashboards, dashboard])
+    await putDashboardState('overview-dashboards', dashboard.id, dashboard)
+    setDashboards(current => [...current, dashboard])
     setCurrentDashboardID(dashboard.id)
     setNewDashboardName('')
     setCreateDashboardOpen(false)
   }
 
-  const deleteDashboard = () => {
+  const deleteDashboard = async () => {
     if (currentDashboard.system || !window.confirm(`Delete ${currentDashboard.name}?`)) return
-    persistDashboards(dashboards.filter((dashboard) => dashboard.id !== currentDashboard.id))
+    await deleteDashboardState('overview-dashboards', currentDashboard.id)
+    setDashboards(current => current.filter(dashboard => dashboard.id !== currentDashboard.id))
     setCurrentDashboardID('default')
     setEditingLayout(false)
     setDashboardMenuOpen(false)
