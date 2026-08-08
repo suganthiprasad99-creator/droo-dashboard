@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, ListFilter, Plus, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { FloatingPageHeader } from '@/components/ui/floating-page-header'
 
 const invoiceColumns = ['Number', 'Customer', 'Order', 'Status', 'Total', 'Currency', 'Balance', 'Due Date', 'Invoice Date', 'Created']
 const templateColumns = ['Name', 'Description', 'Orientation', 'Default', 'Created']
@@ -14,13 +15,13 @@ export function LedgerRecords({ type }: { type: 'invoices' | 'templates' }) {
   const columns = useMemo(() => type === 'invoices' ? invoiceColumns : templateColumns, [type])
 
   return <div className="ledger-page ledger-records-page">
-    <header className="ledger-records-header"><h1>{title}</h1><div>
+    <FloatingPageHeader title={title} className="ledger-records-header">
       <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${title}`} /></label>
       <button className={showFilter ? 'active' : ''} aria-label="Filter" onClick={() => setShowFilter((current) => !current)}><ListFilter /></button>
       <button aria-label="Display settings"><SlidersHorizontal /></button>
       <button aria-label="Refresh"><RefreshCw /></button>
       <button className="ledger-new" onClick={() => setShowNew(true)}><Plus /> New</button>
-    </div></header>
+    </FloatingPageHeader>
     {showFilter && <div className="ledger-filter-popover"><strong>Filters</strong><span>No filters are available until records exist.</span><button onClick={() => setShowFilter(false)}>Done</button></div>}
     <div className="ledger-records-table-wrap"><table className="ledger-records-table"><thead><tr><th><input type="checkbox" aria-label="Select all" /></th>{columns.map(column => <th key={column}><span>{column}</span><i><b>◆</b></i></th>)}</tr></thead></table></div>
     <div className="ledger-no-records">{query ? `No ${title.toLowerCase()} match “${query}”` : 'No records found'}</div>

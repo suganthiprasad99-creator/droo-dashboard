@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { FloatingPageHeader } from "@/components/ui/floating-page-header";
 import {
   Bell,
   Boxes,
@@ -20,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
-  Code2 as Metadata,
   Columns3,
   ExternalLink,
   Eye,
@@ -38,7 +38,6 @@ import {
   Rocket,
   Search,
   Send,
-  Settings,
   ShoppingBag,
   Tag,
   Trash2,
@@ -144,9 +143,17 @@ export function StorefrontPage() {
       setData(responses[2] ? rows(await responses[2].json()) : []);
       setCategories(responses[3] ? rows(await responses[3].json()) : []);
     } catch (value) {
-      setError(
-        value instanceof Error ? value.message : "Unable to load Storefront",
-      );
+      if (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "true") {
+        setStore({ id: "store_local", name: "Fleetbase Market", currency: "INR" });
+        setMetrics({ currency: "INR" });
+        setData([]);
+        setCategories([]);
+        setError("");
+      } else {
+        setError(
+          value instanceof Error ? value.message : "Unable to load Storefront",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -387,12 +394,7 @@ function PageHeader({
   title: string;
   children?: React.ReactNode;
 }) {
-  return (
-    <header className="sf-page-header">
-      <h1>{title}</h1>
-      <div>{children}</div>
-    </header>
-  );
+  return <FloatingPageHeader title={title} className="sf-page-header">{children}</FloatingPageHeader>;
 }
 
 function ProductsPage(props: {
@@ -409,7 +411,8 @@ function ProductsPage(props: {
   importProducts: () => void;
   exportData: () => void;
 }) {
-  const [category, setCategory] = useState("all"),
+  const params = useSearchParams(),
+    category = params.get("category") || "all",
     [layout, setLayout] = useState<"grid" | "list">("grid"),
     [addons, setAddons] = useState(false);
   const visible = props.products.filter(
@@ -444,9 +447,13 @@ function ProductsPage(props: {
           <Tag />
           Manage Addons
         </button>
+        <button onClick={props.openCategory}>
+          <Folder />
+          New Category
+        </button>
         <button className="sf-orange" onClick={() => props.openProduct()}>
           <Plus />
-          New
+          New Product
         </button>
         <button onClick={props.importProducts}>
           <Upload />
@@ -457,47 +464,7 @@ function ProductsPage(props: {
           Export
         </button>
       </PageHeader>
-      <div className="sf-product-body">
-        <aside className="sf-category-pane">
-          <header>
-            <div>
-              <h2>Categories</h2>
-              <p>Organize products for storefront browsing.</p>
-            </div>
-            <button onClick={props.openCategory}>
-              <Plus />
-            </button>
-          </header>
-          <button
-            className={category === "all" ? "active" : ""}
-            onClick={() => setCategory("all")}
-          >
-            <Grid2X2 />
-            <span>
-              <strong>All Products</strong>
-              <small>Full catalog</small>
-            </span>
-          </button>
-          {props.categories.map((row) => (
-            <button
-              key={text(row.id)}
-              className={category === text(row.name) ? "active" : ""}
-              onClick={() => setCategory(text(row.name))}
-            >
-              <ImageIcon />
-              <span>
-                <strong>{text(row.name)}</strong>
-                <small>{text(row.description, "Product category")}</small>
-              </span>
-            </button>
-          ))}
-          {!props.categories.length && (
-            <div className="sf-category-empty">
-              <Folder />
-              <span>No categories yet</span>
-            </div>
-          )}
-        </aside>
+      <div className="sf-product-body sf-products-only">
         <section
           className={layout === "grid" ? "sf-product-grid" : "sf-product-list"}
         >
@@ -1279,13 +1246,12 @@ function Promotions({ store }: { store: Row }) {
   }
   return (
     <div className="sf-promotions">
-      <nav>
-        <span>PROMOTIONS</span>
-        <button className="active">
+      <PageHeader title="Promotions">
+        <button className="sf-promotion-tab active">
           <Bell />
           Push Notifications
         </button>
-      </nav>
+      </PageHeader>
       <div className="sf-promo-layout">
         <div className="sf-promo-form">
           <h1>Send Push Notifications</h1>
@@ -1354,10 +1320,10 @@ function Promotions({ store }: { store: Row }) {
 }
 
 function StoreSettings({ store }: { store: Row }) {
-  const [active, setActive] = useState<
-      "General" | "Location" | "Gateways" | "API" | "Notification"
-    >("General"),
-    [toggles, setToggles] = useState<Record<string, boolean>>({}),
+  const params = useSearchParams(),
+    requestedSection = params.get("section"),
+    active = requestedSection === "location" ? "Location" : requestedSection === "gateways" ? "Gateways" : requestedSection === "api" ? "API" : requestedSection === "notification" ? "Notification" : "General";
+  const [toggles, setToggles] = useState<Record<string, boolean>>({}),
     [reveal, setReveal] = useState(false),
     [values, setValues] = useState<Row>({
       name: text(store.name, "Droo Store"),
@@ -1368,15 +1334,15 @@ function StoreSettings({ store }: { store: Row }) {
     }),
     [message, setMessage] = useState("");
   useEffect(() => {
-    void fetchAuthenticated("/v1/admin/storefront/settings").then(
-      async (response) => {
-        if (!response.ok) return;
-        const result = (await response.json()) as Row;
-        const saved = (result.values as Row) || {};
-        setValues((current) => ({ ...current, ...saved }));
-        setToggles((saved.alerts as Record<string, boolean>) || {});
-      },
-    );
+    void fetchAuthenticated("/v1/admin/storefront/settings")
+      .then(async (response) => {
+          if (!response.ok) return;
+          const result = (await response.json()) as Row;
+          const saved = (result.values as Row) || {};
+          setValues((current) => ({ ...current, ...saved }));
+          setToggles((saved.alerts as Record<string, boolean>) || {});
+        })
+      .catch(() => {});
   }, []);
   async function saveSettings() {
     setMessage("Saving…");
@@ -1389,13 +1355,6 @@ function StoreSettings({ store }: { store: Row }) {
       response.ok ? "Settings saved." : `Save failed (${response.status}).`,
     );
   }
-  const tabs = [
-    ["General", Settings],
-    ["Location", MapPin],
-    ["Gateways", CircleDollarSign],
-    ["API", Metadata],
-    ["Notification", Bell],
-  ] as const;
   const names = [
     "Online",
     "Enable tax",
@@ -1410,19 +1369,6 @@ function StoreSettings({ store }: { store: Row }) {
   ];
   return (
     <div className="sf-settings">
-      <nav>
-        <span>SETTINGS</span>
-        {tabs.map(([label, Icon]) => (
-          <button
-            className={active === label ? "active" : ""}
-            key={label}
-            onClick={() => setActive(label)}
-          >
-            <Icon />
-            {label}
-          </button>
-        ))}
-      </nav>
       {active === "General" && (
         <div className="sf-settings-form">
           <h1>General Settings</h1>
@@ -1613,11 +1559,11 @@ function SettingsEmpty({
     [creating, setCreating] = useState(false),
     [name, setName] = useState("");
   useEffect(() => {
-    void fetchAuthenticated(`/v1/admin/storefront/resources/${kind}`).then(
-      async (response) => {
+    void fetchAuthenticated(`/v1/admin/storefront/resources/${kind}`)
+      .then(async (response) => {
         if (response.ok) setRecords(rows(await response.json()));
-      },
-    );
+      })
+      .catch(() => {});
   }, [kind]);
   async function create() {
     if (!name.trim()) return;

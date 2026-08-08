@@ -5,6 +5,7 @@ import {
   Banknote, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Clock3, FileChartColumn,
   FileClock, MoreHorizontal, ReceiptText, RefreshCw, WalletCards,
 } from 'lucide-react'
+import { FloatingPageHeader } from '@/components/ui/floating-page-header'
 
 const metrics = [
   { label: 'Revenue', value: '$0.00', icon: CircleDollarSign, tone: 'mint', change: '↓ -100%', changeTone: 'negative' },
@@ -38,14 +39,13 @@ function PanelHeader({ title, subtitle }: { title: string; subtitle: string }) {
 
 export function LedgerDashboard() {
   return <div className="ledger-page ledger-dashboard">
-    <header className="ledger-page-header">
-      <h1>Ledger Dashboard</h1>
+    <FloatingPageHeader title="Ledger Dashboard" className="ledger-page-header">
       <div className="ledger-header-controls">
         <button>2026-08-01, 2026-08-07</button>
         <button>Ledger Dashboard <ChevronDown /></button>
         <button aria-label="More dashboard options"><MoreHorizontal /></button>
       </div>
-    </header>
+    </FloatingPageHeader>
 
     <div className="ledger-dashboard-body">
       <section className="ledger-metrics" aria-label="Ledger summary">

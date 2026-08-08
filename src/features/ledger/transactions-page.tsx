@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronLeft, ChevronRight, ListFilter, MoreHorizontal, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { FloatingPageHeader } from '@/components/ui/floating-page-header'
 
 type Transaction = {
   slug: string
@@ -48,12 +49,12 @@ export function TransactionsPage({ selectedId }: { selectedId?: string }) {
   const openTransaction = (row: Transaction) => router.push(`/ledger/payments/transactions/${row.slug}`)
 
   return <div className={`ledger-page transactions-page ${selected ? 'has-transaction-drawer' : ''}`}>
-    <header className="ledger-records-header transactions-header"><h1>Transactions</h1><div>
+    <FloatingPageHeader title="Transactions" className="ledger-records-header transactions-header">
       <label><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search Transactions" /></label>
       <button className={filterOpen ? 'active' : ''} aria-label="Filter" onClick={() => setFilterOpen(current => !current)}><ListFilter /></button>
       <button aria-label="Display settings"><SlidersHorizontal /></button>
       <button aria-label="Refresh"><RefreshCw /></button>
-    </div></header>
+    </FloatingPageHeader>
     {filterOpen && <div className="transaction-filter"><strong>Status</strong>{(['All', 'Success', 'Voided'] as const).map(option => <button className={status === option ? 'active' : ''} key={option} onClick={() => { setStatus(option); setFilterOpen(false) }}>{option}</button>)}</div>}
     <div className="transaction-table-wrap"><table className="transaction-table"><thead><tr><th><input type="checkbox" aria-label="Select all transactions" /></th>{columns.map(column => <th key={column}><span>{column}</span><i>◆</i></th>)}<th /></tr></thead><tbody>
       {visibleRows.map(row => <tr key={row.id} className={row.muted ? 'muted' : ''} onClick={() => openTransaction(row)}>
@@ -86,5 +87,5 @@ function TransactionDrawer({ transaction, onClose }: { transaction: Transaction;
 }
 
 export function PaymentPlaceholder({ title }: { title: string }) {
-  return <div className="ledger-page ledger-records-page"><header className="ledger-records-header"><h1>{title}</h1></header><div className="ledger-no-records">No records found</div></div>
+  return <div className="ledger-page ledger-records-page"><FloatingPageHeader title={title} className="ledger-records-header" /><div className="ledger-no-records">No records found</div></div>
 }

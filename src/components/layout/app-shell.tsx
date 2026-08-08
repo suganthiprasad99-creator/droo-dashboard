@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  BarChart3, Bell, BookOpen, BriefcaseBusiness, Calculator, Car, Check, ChevronDown, Code2, CreditCard, Gauge,
-  FileText, Globe2, HelpCircle, IdCard, Inbox,
-  CalendarDays, Home, Keyboard, KeyRound, Layers3, LogOut, Menu, MessageSquare, MoreHorizontal, Moon, Network, Package,
-  Landmark, PanelLeft, Plus, Radio, ReceiptText, Rocket, Search, Settings2, Shield, SlidersHorizontal, Store,
-  Sun, Truck, Unplug, UserRound, Users, UsersRound, WalletCards, Webhook, Workflow, Wrench, X,
+  AlertTriangle, BarChart3, Bell, BookOpen, BriefcaseBusiness, Calculator, Car, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, ContactRound, CreditCard, Fuel, Gauge,
+  FileText, Folder, Globe2, HelpCircle, IdCard, Inbox,
+  CalendarDays, Home, Keyboard, KeyRound, Layers3, LogOut, Menu, MessageSquare, MoreHorizontal, Network, Package,
+  Landmark, MapPin, PanelLeft, Radio, ReceiptText, Rocket, Search, Send, Settings2, Shield, SlidersHorizontal, Store,
+  Truck, Unplug, UserRound, Users, UsersRound, WalletCards, Warehouse, Webhook, Workflow, Wrench, X,
 } from 'lucide-react'
 import { useApiData } from '@/hooks/use-api-data'
 import type { ApiRecord } from '@/types/dashboard'
@@ -22,6 +22,19 @@ const sidebarGroups = [
   { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/earnings']] },
   { name: 'Settings', icon: Settings2, items: [['Settings Hub', '/settings'], ['Navigator App', '/settings'], ['Map', '/service-areas'], ['Payments', '/earnings'], ['Notifications', '/settings'], ['Routing', '/settings'], ['Orchestrator', '/settings'], ['Scheduling', '/settings'], ['Custom Fields', '/settings'], ['Avatars', '/settings']] },
 ] as const
+
+const sidebarItemIcons: Record<string, typeof Home> = {
+  'Resources Hub': Layers3, Drivers: IdCard, Vehicles: Truck, Fleets: UsersRound,
+  Vendors: Warehouse, Contacts: ContactRound, Places: MapPin, 'Fuel Reports': Fuel,
+  'Fuel Transactions': CreditCard, Issues: AlertTriangle, Orders: Send, Orchestrator: Workflow,
+  'Route Efficiency': BarChart3, Scheduler: CalendarDays, 'Order Config': SlidersHorizontal,
+  'Service Rates': ReceiptText, 'Maintenance Hub': Wrench, Schedules: CalendarDays,
+  'Work Orders': FileText, Maintenances: Wrench, Equipment: Truck, Parts: Package,
+  Telematics: Radio, 'Fuel Providers': Fuel, Devices: Radio, Sensors: Gauge, Events: Bell,
+  Dashboard: BarChart3, Reports: FileText, 'Settings Hub': Settings2, 'Navigator App': Send,
+  Map: MapPin, Payments: CreditCard, Notifications: Bell, Routing: Workflow,
+  Scheduling: CalendarDays, 'Custom Fields': SlidersHorizontal, Avatars: UserRound,
+}
 
 const products = [
   ['Fleet-Ops', '/orchestrator', Workflow, 'Operations'],
@@ -42,6 +55,20 @@ const storefrontItems = [
   ['Promotions', '/storefront?view=promotions', Radio],
   ['Settings', '/storefront?view=settings', Settings2],
   ['Launch App', '/storefront?view=launch', Rocket],
+] as const
+
+const storefrontProductCategories = [
+  ['All Products', '/storefront?view=products', Package],
+  ['Fresh Produce', '/storefront?view=products&category=Fresh%20Produce', Folder],
+  ['Pantry Staples', '/storefront?view=products&category=Pantry%20Staples', Folder],
+] as const
+
+const storefrontSettingsItems = [
+  ['General', '/storefront?view=settings', Settings2],
+  ['Location', '/storefront?view=settings&section=location', MapPin],
+  ['Gateways', '/storefront?view=settings&section=gateways', CreditCard],
+  ['API', '/storefront?view=settings&section=api', Code2],
+  ['Notification', '/storefront?view=settings&section=notification', Bell],
 ] as const
 
 const ledgerItems = [
@@ -103,7 +130,10 @@ function SidebarResources() {
     <div className="live-operations-summary"><strong>LIVE OPERATIONS</strong><span><i className="online" />{liveLoading ? '—' : liveError ? 'Unavailable' : liveDrivers.length} drivers online</span><span><i />{liveLoading || vehiclesLoading ? '—' : liveError || vehiclesError ? 'Unavailable' : onlineVehicleCount} vehicles online</span></div>
     <div className="resource-tabs">{(['Fleets', 'Drivers', 'Vehicles'] as const).map(tab => <button key={tab} className={resourceTab === tab ? 'active' : ''} onClick={() => { setResourceTab(tab); setResourceFilter('') }}>{tab}</button>)}</div>
     <label className="resource-filter"><Search /><input value={resourceFilter} onChange={event => setResourceFilter(event.target.value)} placeholder="Filter resources…" aria-label={`Filter ${resourceTab.toLowerCase()}`} /></label>
-    {visibleRows.length ? <div className="sidebar-resource-list">{visibleRows.map((row, index) => <Link href={href} key={String(row.id || index)}><Icon /><span><strong>{title(row)}</strong><small>{detail(row)}</small></span></Link>)}</div> : <div className="resource-empty"><Icon /><strong>{loading ? `Loading ${resourceTab.toLowerCase()}…` : error ? `${resourceTab} unavailable` : query ? `No matching ${resourceTab.toLowerCase()}` : `No ${resourceTab.toLowerCase()} yet`}</strong><span>{error || (resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`)}</span></div>}
+    {visibleRows.length ? <div className="sidebar-resource-list">{visibleRows.map((row, index) => {
+      const online = resourceTab === 'Drivers' ? onlineDriverIDs.has(String(row.id)) : resourceTab === 'Vehicles' ? onlineDriverIDs.has(String(row.driver_id || '')) : Number(row.drivers || 0) > 0
+      return <div className="sidebar-resource-row" key={String(row.id || index)}><i className={online ? 'online' : ''} /><Link href={href}><Icon /><span><strong>{title(row)}</strong><small>{detail(row)}</small></span></Link><button type="button" aria-label={`More options for ${title(row)}`}><MoreHorizontal /></button></div>
+    })}</div> : <div className="resource-empty"><Icon /><strong>{loading ? `Loading ${resourceTab.toLowerCase()}…` : error ? `${resourceTab} unavailable` : query ? `No matching ${resourceTab.toLowerCase()}` : `No ${resourceTab.toLowerCase()} yet`}</strong><span>{error || (resourceTab === 'Fleets' ? 'Create fleets to organize drivers and vehicles.' : `Available ${resourceTab.toLowerCase()} will appear here.`)}</span></div>}
   </>
 }
 
@@ -119,11 +149,13 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const [locale, setLocale] = useState('English')
   const maintenanceLabels: Record<string, string> = { maintenance: 'Maintenance Hub', schedules: 'Schedules', 'work-orders': 'Work Orders', maintenances: 'Maintenances', equipment: 'Equipment', parts: 'Parts' }
   const initialMaintenanceItem = pathname === '/issues' ? maintenanceLabels[searchParams.get('view') || ''] ?? null : null
+  const resourceLabels: Record<string, string> = { '/overview': 'Resources Hub', '/drivers': 'Drivers', '/vehicles': 'Vehicles', '/fleets': 'Fleets', '/service-areas': 'Places' }
+  const initialResourceItem = resourceLabels[pathname] ?? null
   const [sidebarSearch, setSidebarSearch] = useState('')
-  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : null)
-  const [, setSelectedSidebarItem] = useState<string | null>(initialMaintenanceItem)
+  const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : null)
+  const [, setSelectedSidebarItem] = useState<string | null>(initialMaintenanceItem || initialResourceItem)
   const initialProduct = pathname.startsWith('/storefront') ? 'Storefront' : pathname.startsWith('/ledger') ? 'Ledger' : pathname.startsWith('/iam') ? 'IAM' : pathname.startsWith('/developers') ? 'Developers' : 'Fleet-Ops'
-  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
+  const [activeSidebarGroup, setActiveSidebarGroup] = useState(initialMaintenanceItem ? 'Maintenance' : initialResourceItem ? 'Resources' : initialProduct === 'Fleet-Ops' ? 'Operations' : initialProduct)
   const [activeProduct, setActiveProduct] = useState(initialProduct)
   const sidebarItemActive = (href: string) => {
     const [targetPath, query = ''] = href.split('?')
@@ -191,18 +223,38 @@ export function AppShell({ children, homeMode = false }: { children: React.React
       </div>
       {activeProduct === 'Storefront' ? <>
         <div className="storefront-sidebar-actions">
-          <button className="store-selector"><Store /><span>Product Stationery Store</span><ChevronDown /></button>
+          <button className="store-selector"><Store /><span>Fleetbase Market</span></button>
           <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Storefront..." /><kbd>Cmd K</kbd></label>
         </div>
         <nav className="storefront-sidebar-nav" aria-label="Storefront navigation">
-          {storefrontItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+          {searchParams.get('view') === 'products' ? <>
+            <Link href="/storefront" className="storefront-sidebar-back"><ChevronLeft className="storefront-back-icon" /><span>Products</span></Link>
+            <div className="storefront-category-links">
+              {storefrontProductCategories.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+                const targetCategory = href.includes('category=') ? decodeURIComponent(href.split('category=')[1]) : null
+                const currentCategory = searchParams.get('category')
+                const isActive = targetCategory ? currentCategory === targetCategory : !currentCategory
+                return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span></Link>
+              })}
+            </div>
+          </> : searchParams.get('view') === 'settings' ? <>
+            <Link href="/storefront" className="storefront-sidebar-back"><ChevronLeft className="storefront-back-icon" /><span>Settings</span></Link>
+            <div className="storefront-settings-links">
+              {storefrontSettingsItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
+                const targetSection = href.includes('section=') ? href.split('section=')[1] : null
+                const currentSection = searchParams.get('section')
+                const isActive = targetSection ? currentSection === targetSection : !currentSection
+                return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span></Link>
+              })}
+            </div>
+          </> : storefrontItems.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
             const currentView = searchParams.get('view')
             const targetView = href.includes('view=') ? href.split('view=')[1] : null
             const isActive = pathname === '/storefront' && (targetView ? currentView === targetView : !currentView)
-            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{['Products', 'Promotions', 'Settings'].includes(label) && <ChevronDown />}</Link>
+            return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span>{['Products', 'Promotions', 'Settings'].includes(label) && <ChevronRight />}</Link>
           })}
         </nav>
-        <footer className="storefront-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
+        <footer className="storefront-sidebar-footer"><strong>Fleetbase</strong><span>v0.7.51 · Legal</span></footer>
       </> : activeProduct === 'Ledger' ? <>
         <div className="ledger-sidebar-actions">
           <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Ledger..." /><kbd>Cmd K</kbd></label>
@@ -254,13 +306,13 @@ export function AppShell({ children, homeMode = false }: { children: React.React
         <footer className="developers-sidebar-footer"><strong>Droo</strong><span>v1.0 · Legal</span></footer>
       </> : <>
       <div className="fleet-sidebar-actions">
-        <Link href="/orders" className="create-order-action" onClick={() => setMobile(false)}><Plus /><span>Create new order</span></Link>
+        <Link href="/orders" className="create-order-action" onClick={() => setMobile(false)}><Send /><span>Create new order</span></Link>
         <label className="fleet-sidebar-search"><Search /><input value={sidebarSearch} onChange={(event) => setSidebarSearch(event.target.value)} placeholder="Search Fleet-Ops..." /><kbd>Cmd K</kbd></label>
       </div>
       <nav className="fleet-sidebar-nav">
         {currentSidebarGroup ? <>
           <button className="sidebar-back" type="button" aria-label={`Back from ${currentSidebarGroup}`} onClick={() => { setCurrentSidebarGroup(null); setSidebarSearch('') }}><ChevronDown /><span>{currentSidebarGroup}</span></button>
-          <div className="nested-sidebar-items">{sidebarGroups.find((group) => group.name === currentSidebarGroup)?.items.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href]) => { const selected = sidebarItemActive(href); return <Link key={label} href={href} className={selected ? 'active' : ''} aria-current={selected ? 'page' : undefined} onClick={() => { setSelectedSidebarItem(label); setMobile(false) }}><span>{label}</span></Link> })}</div>
+          <div className="nested-sidebar-items">{sidebarGroups.find((group) => group.name === currentSidebarGroup)?.items.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href]) => { const selected = sidebarItemActive(href); const ItemIcon = sidebarItemIcons[label] || Layers3; return <Link key={label} href={href} className={selected ? 'active' : ''} aria-current={selected ? 'page' : undefined} onClick={() => { setSelectedSidebarItem(label); setMobile(false) }}><ItemIcon /><span>{label}</span></Link> })}</div>
         </> : sidebarGroups.filter(({ name, items }) => !sidebarSearch || name.toLowerCase().includes(sidebarSearch.toLowerCase()) || items.some(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase()))).map(({ name, icon: Icon }) => {
           const isActive = activeSidebarGroup === name
           return <button key={name} className={isActive ? 'group-trigger active' : 'group-trigger'} aria-current={isActive ? 'page' : undefined} onClick={() => {
@@ -274,17 +326,23 @@ export function AppShell({ children, homeMode = false }: { children: React.React
               return
             }
             setCurrentSidebarGroup(name)
+            if (name === 'Resources') {
+              setSelectedSidebarItem('Resources Hub')
+              setMobile(false)
+              router.push('/overview')
+            }
             if (name === 'Maintenance') {
               setSelectedSidebarItem('Maintenance Hub')
               setMobile(false)
               router.push('/issues?view=maintenance')
             }
-          }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronDown /></button>
+          }} title={collapsed ? name : undefined}><Icon /><span>{name}</span><ChevronRight /></button>
         })}
       </nav>
       {(!currentSidebarGroup || currentSidebarGroup === 'Operations') && <footer className="fleet-sidebar-footer">
         <SidebarResources />
       </footer>}
+      <footer className="fleet-sidebar-legal"><strong>Fleetbase</strong><span>v0.7.51 · Legal</span></footer>
       </>}
     </aside>}
     {!homeMode && mobile && <button className="overlay" aria-label="Close navigation" onClick={() => setMobile(false)} />}
@@ -356,7 +414,10 @@ export function AppShell({ children, homeMode = false }: { children: React.React
               <div className="dropdown-rule" />
               <Link className="dropdown-item" href="/settings" onClick={() => setOpenMenu(null)}><UserRound />View profile</Link>
               <button className="dropdown-item" onClick={() => toggleMenu('shortcuts')}><Keyboard />Keyboard shortcuts</button>
-              <button className="dropdown-item" onClick={toggleTheme}>{dark ? <Sun /> : <Moon />}{dark ? 'Use light mode' : 'Use dark mode'}</button>
+              <button className="dropdown-item theme-toggle-row" role="switch" aria-checked={dark} onClick={toggleTheme}>
+                <span className={dark ? 'theme-switch on' : 'theme-switch'}><i /></span>
+                <span>Dark Mode</span>
+              </button>
               <a className="dropdown-item" href="mailto:support@droo.com"><HelpCircle />Help &amp; support</a>
               <div className="dropdown-rule" />
               <button className="dropdown-item danger" onClick={() => setOpenMenu(null)}><LogOut />Log out</button>
