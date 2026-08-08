@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Plus, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { FloatingPageHeader } from '@/components/ui/floating-page-header'
 
 type Account = { name: string; code: string; type: 'Asset' | 'Liability' | 'Equity' | 'Expense' | 'Revenue'; balance: string; entries?: number }
 
@@ -49,11 +50,11 @@ function StatusPill({ children }: { children: React.ReactNode }) {
 }
 
 function AccountingTools({ title, query, setQuery, onNew }: { title: string; query: string; setQuery: (value: string) => void; onNew?: () => void }) {
-  return <header className="ledger-records-header accounting-header"><h1>{title}</h1><div>
+  return <FloatingPageHeader title={title} className="ledger-records-header accounting-header">
     <label><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${title}`} /></label>
     <button aria-label="Filter"><ListFilter /></button><button aria-label="Display settings"><SlidersHorizontal /></button><button aria-label="Refresh"><RefreshCw /></button>
     {onNew && <button className="ledger-new" onClick={onNew}><Plus />New</button>}
-  </div></header>
+  </FloatingPageHeader>
 }
 
 function Pagination({ count, pages = 1 }: { count: number; pages?: number }) {
@@ -111,7 +112,7 @@ export function GeneralLedgerPage() {
   const [type, setType] = useState('All Types')
   const [expanded, setExpanded] = useState<string | null>(null)
   const visible = accounts.filter(account => (type === 'All Types' || account.type === type) && `${account.name} ${account.code}`.toLowerCase().includes(query.toLowerCase()))
-  return <div className="ledger-page general-ledger-page"><header className="general-ledger-header"><h1>General Ledger</h1><div><label><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Select date range" /></label><select value={type} onChange={event => setType(event.target.value)}><option>All Types</option><option>Asset</option><option>Liability</option><option>Equity</option><option>Expense</option><option>Revenue</option></select><button aria-label="More filters"><ChevronDown /></button></div></header><section className="general-ledger-list">
+  return <div className="ledger-page general-ledger-page"><FloatingPageHeader title="General Ledger" className="general-ledger-header"><label><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Select date range" /></label><select value={type} onChange={event => setType(event.target.value)}><option>All Types</option><option>Asset</option><option>Liability</option><option>Equity</option><option>Expense</option><option>Revenue</option></select><button aria-label="More filters"><ChevronDown /></button></FloatingPageHeader><section className="general-ledger-list">
     {visible.map(account => <article key={account.code} className={expanded === account.code ? 'expanded' : ''}><button onClick={() => setExpanded(current => current === account.code ? null : account.code)} aria-expanded={expanded === account.code}><ChevronRight /><code>{account.code}</code><strong>{account.name}</strong><span className={`account-type ${account.type.toLowerCase()}`}>{account.type}</span><small>{account.entries ? `${account.entries} entries` : ''}</small><b>{account.balance}</b></button>{expanded === account.code && <div className="ledger-account-detail"><span>Opening balance</span><b>{account.balance}</b><span>Current balance</span><b>{account.balance}</b></div>}</article>)}
   </section></div>
 }
