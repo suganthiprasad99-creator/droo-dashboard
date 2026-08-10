@@ -1,3 +1,3 @@
-import { RecordsPage } from '@/features/records/records-page'
+import { DriversPage } from '@/features/drivers/drivers-page'
 
-export default function Page() { return <RecordsPage module="Drivers" /> }
+export default function Page() { return <DriversPage /> }

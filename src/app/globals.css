@@ -3,6 +3,8 @@
 @import "./vehicle-delete-dialog.css";
 @import "./scheduler-shift-card.css";
 @import "./devices.css";
+@import "./resource-management.css";
+@import "./driver-management.css";
 
 /* Keep wide tables scrollable without displaying the heavy native scrollbar track. */
 .table-wrap,.resource-table-wrap{scrollbar-width:none;-ms-overflow-style:none}

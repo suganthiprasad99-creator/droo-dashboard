@@ -17,7 +17,7 @@ import { ComposeDialog } from '@/components/ui/compose-dialog'
 
 const sidebarGroups = [
   { name: 'Operations', icon: Workflow, items: [['Orders', '/orders'], ['Orchestrator', '/orchestrator'], ['Route Efficiency', '/route-efficiency'], ['Scheduler', '/scheduler'], ['Order Config', '/order-config'], ['Service Rates', '/fleet-ops/service-rates']] },
-  { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/integrations'], ['Contacts', '/settings'], ['Places', '/service-areas'], ['Fuel Reports', '/earnings'], ['Fuel Transactions', '/fuel-transactions'], ['Issues', '/issues']] },
+  { name: 'Resources', icon: Truck, items: [['Resources Hub', '/overview'], ['Drivers', '/drivers'], ['Vehicles', '/vehicles'], ['Fleets', '/fleets'], ['Vendors', '/vendors'], ['Contacts', '/contacts'], ['Places', '/places'], ['Fuel Reports', '/fuel-reports'], ['Fuel Transactions', '/fuel-transactions'], ['Issues', '/issues']] },
   { name: 'Maintenance', icon: Wrench, items: [['Maintenance Hub', '/issues?view=maintenance'], ['Schedules', '/issues?view=schedules'], ['Work Orders', '/issues?view=work-orders'], ['Maintenances', '/issues?view=maintenances'], ['Equipment', '/issues?view=equipment'], ['Parts', '/issues?view=parts']] },
   { name: 'Connectivity', icon: Radio, items: [['Telematics', '/integrations?view=telematics'], ['Fuel Integrations', '/integrations?view=fuel-Integrations'], ['Devices', '/integrations?view=devices'], ['Sensors', '/integrations?view=sensors'], ['Events', '/integrations?view=events']] },
   { name: 'Analytics', icon: BarChart3, items: [['Dashboard', '/overview'], ['Route Efficiency', '/route-efficiency'], ['Reports', '/reports']] },
