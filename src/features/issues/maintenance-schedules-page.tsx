@@ -2,8 +2,13 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Funnel, Monitor, MoreHorizontal, Plus, RefreshCw, Search, SlidersHorizontal, Table2, Trash2, Upload, X } from 'lucide-react'
+<<<<<<< HEAD
 import { useApiData } from '@/hooks/use-api-data'
 import { deleteDashboardState, listDashboardState, putDashboardState } from '@/lib/dashboard-state'
+=======
+import { maintenanceApi, type MaintenanceSchedule as ApiSchedule } from '@/lib/maintenance-api'
+import { fetchAuthenticated } from '@/hooks/use-api-data'
+>>>>>>> 518d20e (maintain)
 
 type MaintenanceSchedule = {
   id: string
@@ -24,13 +29,18 @@ type MaintenanceSchedule = {
 }
 
 const emptySchedule = (): MaintenanceSchedule => ({ id: '', name: '', subject: '', type: '', status: '', nextDue: '', created: '', assetType: '', intervalMethod: '', priority: '', assigneeType: '', instructions: '', reminderDays: '', intervalValue: '', lastServiceDate: '' })
+<<<<<<< HEAD
 type ScheduleAsset = { id: string; label: string }
+=======
+>>>>>>> 518d20e (maintain)
 const scheduleColumns = ['ID', 'Name', 'Subject', 'Type', 'Status', 'Next Due', 'Created'] as const
 type ScheduleColumn = (typeof scheduleColumns)[number]
 type ScheduleFilters = { id: string; name: string; type: string; status: string; nextDue: string; created: string }
+type AssetOption = { id: string; label: string; type: 'vehicle' | 'equipment' }
 const emptyFilters = (): ScheduleFilters => ({ id: '', name: '', type: '', status: '', nextDue: '', created: '' })
 
 const prettyDate = (value: string) => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00`)).replace(/ /g, ', ').replace(', ,', ', ') : '—'
+const fromApi = (row: ApiSchedule): MaintenanceSchedule => ({ ...emptySchedule(), id: row.id, name: row.name, subject: row.vehicle_id || row.equipment_id || '', type: row.maintenance_type, status: row.status === 'active' ? 'Active' : 'Paused', nextDue: row.next_due_at?.slice(0, 10) || '', created: row.created_at, assetType: row.vehicle_id ? 'vehicle' : 'equipment', intervalMethod: row.trigger_type === 'distance' ? 'mileage' : row.trigger_type.replace('_', '-'), intervalValue: String(row.interval_days || row.interval_distance_km || row.interval_engine_hours || ''), lastServiceDate: row.last_completed_at?.slice(0, 10) || '', instructions: row.instructions || '' })
 
 export function MaintenanceSchedulesPage() {
   const { rows: vehicles } = useApiData('Vehicles', undefined, false)
@@ -52,10 +62,12 @@ export function MaintenanceSchedulesPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [notice, setNotice] = useState('')
   const [deletingSchedule, setDeletingSchedule] = useState<MaintenanceSchedule | null>(null)
+  const [assets, setAssets] = useState<AssetOption[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = async () => {
     try {
+<<<<<<< HEAD
       const [scheduleEntries, equipmentEntries] = await Promise.all([
         listDashboardState<MaintenanceSchedule>('maintenance-schedules'),
         listDashboardState<{ id: string; name?: string; code?: string }>('maintenance-equipment'),
@@ -64,10 +76,25 @@ export function MaintenanceSchedulesPage() {
       setEquipment(equipmentEntries.map(entry => ({ id: entry.value.id || entry.key, label: entry.value.name || entry.value.code || entry.key })))
       setNotice('')
     } catch { setSchedules([]); setEquipment([]); setNotice('Unable to load maintenance schedules.') }
+=======
+      setSchedules((await maintenanceApi.listSchedules()).map(fromApi))
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to load maintenance schedules.') }
+>>>>>>> 518d20e (maintain)
     finally { setLoading(false) }
   }
+  const loadAssets = async () => {
+    try {
+      const [equipment, vehicleResponse] = await Promise.all([maintenanceApi.listEquipment(), fetchAuthenticated('/v1/admin/vehicles')])
+      const vehicleBody = vehicleResponse.ok ? await vehicleResponse.json() as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> : []
+      const vehicles = Array.isArray(vehicleBody) ? vehicleBody : vehicleBody.data || []
+      setAssets([
+        ...vehicles.map(row => ({ id: String(row.id || ''), label: String(row.name || row.call_sign || row.plate_number || row.id || ''), type: 'vehicle' as const })).filter(row => row.id),
+        ...equipment.map(row => ({ id: row.id, label: `${row.name}${row.code ? ` (${row.code})` : ''}`, type: 'equipment' as const })),
+      ])
+    } catch { setAssets([]) }
+  }
   useEffect(() => {
-    const timer = window.setTimeout(() => { void load() }, 0)
+    const timer = window.setTimeout(() => { void load(); void loadAssets() }, 0)
     return () => window.clearTimeout(timer)
   }, [])
 
@@ -77,28 +104,21 @@ export function MaintenanceSchedulesPage() {
     : equipment
   const save = async (event: FormEvent) => {
     event.preventDefault()
-    if (!editor?.name || !editor.type || !editor.assetType || !editor.intervalMethod) { setNotice('Complete the required schedule fields.'); return }
-    const isNew = !editor.id
-    const value = { ...editor, id: editor.id || `schedule_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`, created: editor.created || new Date().toISOString().slice(0, 16).replace('T', ' ') }
-    try { await putDashboardState('maintenance-schedules', value.id, value); setSchedules(items => [...items.filter(item => item.id !== value.id), value]); setEditor(null); setNotice(isNew ? 'Maintenance schedule created.' : 'Maintenance schedule updated.') } catch { setNotice('Unable to save the maintenance schedule.') }
+    if (!editor?.name || !editor.type || !editor.assetType || !editor.subject || !editor.intervalMethod) { setNotice('Complete the required fields and select a target vehicle or equipment item.'); return }
+    if (editor.id) { setNotice('Existing schedules are lifecycle-controlled. Create a replacement schedule to change its definition.'); return }
+    const trigger = editor.intervalMethod === 'mileage' ? 'distance' : editor.intervalMethod.replace('-', '_')
+    const interval = Number(editor.intervalValue)
+    if (!Number.isFinite(interval) || interval <= 0) { setNotice('Enter an interval value greater than zero.'); return }
+    try { await maintenanceApi.createSchedule({ name: editor.name, maintenance_type: editor.type, trigger_type: trigger, [editor.assetType === 'vehicle' ? 'vehicle_id' : 'equipment_id']: editor.subject, ...(trigger === 'time' ? { interval_days: interval } : trigger === 'distance' ? { interval_distance_km: interval } : trigger === 'engine_hours' ? { interval_engine_hours: interval } : { interval_days: interval }), ...(editor.nextDue ? { next_due_at: new Date(`${editor.nextDue}T00:00:00Z`).toISOString() } : {}), ...(editor.instructions ? { instructions: editor.instructions } : {}) }); await load(); setEditor(null); setNotice('Maintenance schedule created.') } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to save the maintenance schedule.') }
   }
   const updateStatus = async (item: MaintenanceSchedule, status: 'Active' | 'Paused') => {
-    const value = { ...item, status }; await putDashboardState('maintenance-schedules', value.id, value); setSchedules(items => items.map(current => current.id === value.id ? value : current)); setMenu(null); setNotice(`Schedule ${status.toLowerCase()}.`)
+    try { const value = status === 'Active' ? await maintenanceApi.resumeSchedule(item.id) : await maintenanceApi.pauseSchedule(item.id); setSchedules(items => items.map(current => current.id === value.id ? fromApi(value) : current)); setMenu(null); setNotice(`Schedule ${status.toLowerCase()}.`) } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to update schedule.') }
   }
   const remove = async (item: MaintenanceSchedule) => {
-    try {
-      await deleteDashboardState('maintenance-schedules', item.id)
-      setSchedules(items => items.filter(current => current.id !== item.id))
-      setSelected(items => items.filter(id => id !== item.id))
-      setDeletingSchedule(null)
-      setMenu(null)
-      setNotice('Maintenance schedule deleted.')
-    } catch { setNotice('Unable to delete the maintenance schedule.') }
+    setDeletingSchedule(null); setMenu(null); setNotice(`Schedule ${item.id} cannot be deleted because maintenance history must be preserved. Pause it instead.`)
   }
   const trigger = async (item: MaintenanceSchedule) => {
-    const id = `work_order_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`
-    const workOrder = { id, scheduleId: item.id, name: item.name, subject: item.subject, type: item.type, priority: item.priority || 'Medium', status: 'Open', instructions: item.instructions, created: new Date().toISOString() }
-    try { await putDashboardState('maintenance-work-orders', id, workOrder); setNotice(`Work order ${id} created from schedule.`) }
+    try { const workOrder = await maintenanceApi.triggerSchedule(item.id); setNotice(`Work order ${workOrder.code} created from schedule.`) }
     catch { setNotice('Unable to create a work order from this schedule.') }
     finally { setMenu(null) }
   }
@@ -107,7 +127,7 @@ export function MaintenanceSchedulesPage() {
   }
   const importRows = async (file?: File) => {
     if (!file) return
-    try { const rows = JSON.parse(await file.text()) as MaintenanceSchedule[]; await Promise.all(rows.map(row => putDashboardState('maintenance-schedules', row.id, row))); await load(); setNotice(`${rows.length} schedules imported.`) } catch { setNotice('Import failed. Select a valid schedules JSON file.') }
+    try { const rows = JSON.parse(await file.text()) as MaintenanceSchedule[]; for (const row of rows) { const trigger = row.intervalMethod === 'mileage' ? 'distance' : row.intervalMethod.replace('-', '_'); const interval = Number(row.intervalValue); await maintenanceApi.createSchedule({ name: row.name, maintenance_type: row.type, trigger_type: trigger, [row.assetType === 'vehicle' ? 'vehicle_id' : 'equipment_id']: row.subject, ...(trigger === 'time' ? { interval_days: interval } : trigger === 'distance' ? { interval_distance_km: interval } : trigger === 'engine_hours' ? { interval_engine_hours: interval } : { interval_days: interval }) }) } await load(); setNotice(`${rows.length} schedules imported.`) } catch { setNotice('Import failed. Check the records and asset IDs.') }
   }
 
   const calendarDays = useMemo(() => {
@@ -134,7 +154,11 @@ export function MaintenanceSchedulesPage() {
 
     {editor && <div className="modal-backdrop order-drawer-backdrop schedule-editor-backdrop"><section className="modal order-compose-modal schedule-editor" role="dialog" aria-modal="true" aria-label={viewOnly ? 'Maintenance schedule details' : editor.id ? 'Edit maintenance schedule' : 'Create new maintenance schedule'}><header><div><h2>{viewOnly ? 'Maintenance schedule details' : editor.id ? 'Edit maintenance schedule' : 'Create new maintenance schedule'}</h2><p>{viewOnly ? 'Review this maintenance schedule record.' : editor.id ? 'Update this maintenance schedule record.' : 'Create a new maintenance schedule record.'}</p></div><button type="button" aria-label="Close schedule form" onClick={() => setEditor(null)}><X /></button></header><form onSubmit={save}><div className="schedule-editor-body">
       <ScheduleSection title="Schedule Details"><label>Schedule Name<input disabled={viewOnly} value={editor.name} onChange={event => setEditor({ ...editor, name: event.target.value })} placeholder="e.g. Oil & Filter Change — Truck #4" /></label><label>Type<select disabled={viewOnly} value={editor.type} onChange={event => setEditor({ ...editor, type: event.target.value })}><option value="">Select Type</option><option value="inspection">Inspection</option><option value="service">Service</option><option value="repair">Repair</option></select></label><label>Status<select disabled={viewOnly} value={editor.status} onChange={event => setEditor({ ...editor, status: event.target.value as MaintenanceSchedule['status'] })}><option value="">Select Status</option><option>Active</option><option>Paused</option></select></label></ScheduleSection>
+<<<<<<< HEAD
       <ScheduleSection title="Asset" description="Which asset does this schedule apply to?"><label>Asset Type<select disabled={viewOnly} value={editor.assetType} onChange={event => setEditor({ ...editor, assetType: event.target.value, subject: '' })}><option value="">Select Asset Type</option><option value="vehicle">Vehicle</option><option value="equipment">Equipment</option></select></label>{editor.assetType && <label>{editor.assetType === 'vehicle' ? 'Vehicle' : 'Equipment'}<select disabled={viewOnly} value={editor.subject} onChange={event => setEditor({ ...editor, subject: event.target.value })}><option value="">Select {editor.assetType}</option>{assetOptions.map(asset => <option key={asset.id} value={asset.id}>{asset.label}</option>)}</select></label>}</ScheduleSection>
+=======
+      <ScheduleSection title="Asset" description="Which asset does this schedule apply to?"><label>Asset Type<select disabled={viewOnly} required value={editor.assetType} onChange={event => setEditor({ ...editor, assetType: event.target.value, subject: '' })}><option value="">Select Asset Type</option><option value="vehicle">Vehicle</option><option value="equipment">Equipment</option></select></label>{editor.assetType && <label>{editor.assetType === 'vehicle' ? 'Vehicle' : 'Equipment'}<select disabled={viewOnly} required value={editor.subject} onChange={event => setEditor({ ...editor, subject: event.target.value })}><option value="">Select {editor.assetType}</option>{assets.filter(asset => asset.type === editor.assetType).map(asset => <option key={asset.id} value={asset.id}>{asset.label}</option>)}</select></label>}</ScheduleSection>
+>>>>>>> 518d20e (maintain)
       <ScheduleSection title="Maintenance Interval" description="How should this maintenance be triggered?"><label>Interval Method<select disabled={viewOnly} value={editor.intervalMethod} onChange={event => setEditor({ ...editor, intervalMethod: event.target.value })}><option value="">Select interval method</option><option value="time">Time-based</option><option value="mileage">Mileage-based</option><option value="engine-hours">Engine hours-based</option><option value="hybrid">Hybrid</option></select></label>{editor.intervalMethod && <><label>Interval Value<input disabled={viewOnly} type="number" min="1" value={editor.intervalValue} onChange={event => setEditor({ ...editor, intervalValue: event.target.value })} placeholder={editor.intervalMethod === 'time' ? 'e.g. 90 days' : 'e.g. 10000'} /></label><label>Last Service Date<input disabled={viewOnly} type="date" value={editor.lastServiceDate} onChange={event => setEditor({ ...editor, lastServiceDate: event.target.value })} /></label><label>Next Due<input disabled={viewOnly} type="date" value={editor.nextDue} onChange={event => setEditor({ ...editor, nextDue: event.target.value })} /></label></>}</ScheduleSection>
       <ScheduleSection title="Work Order Defaults" description="These settings are used when a work order is auto-generated from this schedule."><label>Default Priority<select disabled={viewOnly} value={editor.priority} onChange={event => setEditor({ ...editor, priority: event.target.value })}><option value="">Select Priority</option><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label><label>Default Assignee Type<select disabled={viewOnly} value={editor.assigneeType} onChange={event => setEditor({ ...editor, assigneeType: event.target.value })}><option value="">Select Assignee Type</option><option>Person</option><option>Vendor</option><option>Team</option></select></label><label className="wide">Instructions<textarea disabled={viewOnly} value={editor.instructions} onChange={event => setEditor({ ...editor, instructions: event.target.value })} placeholder="Instructions for the technician performing this maintenance..." /></label></ScheduleSection>
       <ScheduleSection title="Reminder Emails" description="Send email reminders before the next due date"><label>Reminder Days Before<input disabled={viewOnly} value={editor.reminderDays} onChange={event => setEditor({ ...editor, reminderDays: event.target.value })} placeholder="7, 1" /></label><p>Press Enter or comma to add each offset. The default assignee will receive an email for each configured offset.</p></ScheduleSection>
