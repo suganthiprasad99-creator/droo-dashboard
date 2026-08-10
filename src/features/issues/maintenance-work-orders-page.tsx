@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, ExternalLink, Eye, Funnel, MoreHorizontal, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
-import { deleteDashboardState, listDashboardState, putDashboardState } from '@/lib/dashboard-state'
+import { maintenanceApi, type MaintenanceWorkOrder as ApiWorkOrder } from '@/lib/maintenance-api'
+import { fetchAuthenticated } from '@/hooks/use-api-data'
 import { ReferenceSelect, useMaintenanceReferenceOptions } from './use-maintenance-reference-options'
 
 type WorkOrder = {
@@ -29,6 +30,8 @@ type WorkOrder = {
 }
 
 type MetadataRow = { id: string; key: string; value: string | number | boolean; type: 'text' | 'number' | 'boolean' }
+type AssetOption = { id: string; label: string; type: 'Vehicle' | 'Equipment' }
+type AssigneeOption = { id: string; label: string }
 const parseMetadata = (value: string): MetadataRow[] => {
   if (!value.trim()) return []
   try {
@@ -42,10 +45,11 @@ const columns = ['Code', 'Subject', 'Category', 'Status', 'Priority', 'Assignee'
 type Column = (typeof columns)[number]
 const blank = (): WorkOrder => ({ id: '', code: '', subject: '', category: '', status: '', priority: '', assignee: '', assigneeType: '', targetType: '', target: '', openedAt: '', dueAt: '', closedAt: '', instructions: '', metadata: '', created: '' })
 const blankFilters = () => ({ code: '', subject: '', category: '', status: '', priority: '', assignee: '', dueAt: '', created: '' })
+const title = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+const fromApi = (row: ApiWorkOrder): WorkOrder => { const external = row.assigned_vendor_ref || ''; const isContact = external.startsWith('contact:'); const isVendor = external.startsWith('vendor:'); return ({ ...blank(), id: row.id, code: row.code, subject: row.subject, category: title(row.category), status: title(row.status), priority: title(row.priority), assignee: row.assigned_user_id || (isContact || isVendor ? external.slice(external.indexOf(':') + 1) : external), assigneeType: row.assigned_user_id ? 'User' : isContact ? 'Contact' : external ? 'Vendor' : '', targetType: row.vehicle_id ? 'Vehicle' : 'Equipment', target: row.vehicle_id || row.equipment_id || '', openedAt: row.opened_at?.slice(0, 10) || '', dueAt: row.due_at?.slice(0, 10) || '', closedAt: row.completed_at?.slice(0, 10) || '', instructions: row.instructions || '', created: row.created_at, scheduleId: row.schedule_id }) }
 
 export function MaintenanceWorkOrdersPage() {
   const searchParams = useSearchParams()
-  const references = useMaintenanceReferenceOptions()
   const [rows, setRows] = useState<WorkOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -61,19 +65,31 @@ export function MaintenanceWorkOrdersPage() {
   const [deleting, setDeleting] = useState<WorkOrder | null>(null)
   const [notice, setNotice] = useState('')
   const [guideOpen, setGuideOpen] = useState(() => searchParams.get('guide') === 'open')
+  const [assets, setAssets] = useState<AssetOption[]>([])
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = async () => {
     try {
-      const stored = await listDashboardState<WorkOrder>('maintenance-work-orders')
-      setRows(stored.map(entry => {
-        const row = entry.value
-        return { ...blank(), ...row, code: row.code || row.id, subject: row.subject || row.name || '', category: row.category || row.type || '' }
-      }))
-    } catch { setNotice('Unable to load work orders.') }
+      setRows((await maintenanceApi.listWorkOrders()).map(fromApi))
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to load work orders.') }
     finally { setLoading(false) }
   }
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [])
+  const loadAssets = async () => {
+    try {
+      const [equipment, vehicleResponse, driverResponse] = await Promise.all([maintenanceApi.listEquipment(), fetchAuthenticated('/v1/admin/vehicles'), fetchAuthenticated('/v1/admin/drivers?limit=100')])
+      const vehicleBody = vehicleResponse.ok ? await vehicleResponse.json() as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> : []
+      const vehicles = Array.isArray(vehicleBody) ? vehicleBody : vehicleBody.data || []
+      const driverBody = driverResponse.ok ? await driverResponse.json() as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> : []
+      const drivers = Array.isArray(driverBody) ? driverBody : driverBody.data || []
+      setAssets([
+        ...vehicles.map(row => ({ id: String(row.id || ''), label: String(row.name || row.call_sign || row.plate_number || row.id || ''), type: 'Vehicle' as const })).filter(row => row.id),
+        ...equipment.map(row => ({ id: row.id, label: `${row.name}${row.code ? ` (${row.code})` : ''}`, type: 'Equipment' as const })),
+      ])
+      setAssignees(drivers.map(row => ({ id: String(row.user_id || ''), label: String(row.name || row.phone || row.user_id || '') })).filter(row => row.id))
+    } catch { setAssets([]); setAssignees([]) }
+  }
+  useEffect(() => { const timer = window.setTimeout(() => { void load(); void loadAssets() }, 0); return () => window.clearTimeout(timer) }, [])
   useEffect(() => { if (!guideOpen) return; const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')closeGuide()};window.addEventListener('keydown',closeOnEscape);return()=>window.removeEventListener('keydown',closeOnEscape) }, [guideOpen])
 
   function openGuide() { setGuideOpen(true); const url=new URL(window.location.href);url.searchParams.set('guide','open');window.history.replaceState({},'',url) }
@@ -86,16 +102,18 @@ export function MaintenanceWorkOrdersPage() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
-    if (!editor?.subject || !editor.category || !editor.status || !editor.priority) { setNotice('Complete the required work order fields.'); return }
-    const id = editor.id || `work_order_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`
-    const value = { ...editor, id, code: editor.code || id, created: editor.created || new Date().toISOString().slice(0, 16).replace('T', ' ') }
-    try { await putDashboardState('maintenance-work-orders', id, value); setRows(items => [...items.filter(item => item.id !== id), value]); setEditor(null); setNotice(editor.id ? 'Work order updated.' : `Work order ${id} created.`) }
-    catch { setNotice('Unable to save the work order.') }
+    if (!editor?.subject || !editor.category || !editor.status || !editor.priority || !editor.targetType || !editor.target) { setNotice('Complete the required fields and select a target vehicle or equipment item.'); return }
+    if (editor.id) { setNotice('Use the work-order lifecycle actions to update an existing work order.'); return }
+    const user = editor.assigneeType === 'User' && editor.assignee ? assignees.find(item => item.id === editor.assignee || item.label.toLowerCase() === editor.assignee.toLowerCase()) : undefined
+    const ignoredInvalidUser = editor.assigneeType === 'User' && Boolean(editor.assignee) && !user
+    const externalAssignee = (editor.assigneeType === 'Vendor' || editor.assigneeType === 'Contact') && editor.assignee ? `${editor.assigneeType.toLowerCase()}:${editor.assignee.trim()}` : ''
+    try { const value = await maintenanceApi.createWorkOrder({ code: editor.code, subject: editor.subject, category: editor.category.toLowerCase().startsWith('preventive') ? 'preventive' : editor.category.toLowerCase(), priority: editor.priority.toLowerCase(), [editor.targetType.toLowerCase() === 'vehicle' ? 'vehicle_id' : 'equipment_id']: editor.target, currency: 'INR', estimated_cost_minor: 0, ...(user ? { assigned_user_id: user.id } : {}), ...(externalAssignee ? { assigned_vendor_ref: externalAssignee } : {}), ...(editor.dueAt ? { due_at: new Date(`${editor.dueAt}T23:59:59Z`).toISOString() } : {}), ...(editor.instructions ? { instructions: editor.instructions } : {}) }); await load(); setEditor(null); setNotice(ignoredInvalidUser ? `Work order ${value.code} created without an assignee because the selected driver was not an organization member.` : `Work order ${value.code} created.`) }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to save the work order.') }
   }
-  const updateStatus = async (row: WorkOrder, status: string) => { const value = { ...row, status, closedAt: status === 'Completed' ? new Date().toISOString().slice(0, 10) : row.closedAt }; await putDashboardState('maintenance-work-orders', row.id, value); setRows(items => items.map(item => item.id === row.id ? value : item)); setMenu(null); setNotice(`Work order marked ${status.toLowerCase()}.`) }
-  const remove = async () => { if (!deleting) return; try { await deleteDashboardState('maintenance-work-orders', deleting.id); setRows(items => items.filter(item => item.id !== deleting.id)); setSelected(items => items.filter(id => id !== deleting.id)); setDeleting(null); setNotice('Work order deleted.') } catch { setNotice('Unable to delete the work order.') } }
+  const updateStatus = async (row: WorkOrder, status: string) => { try { let allowed = await maintenanceApi.allowedActions(row.id); const action = status === 'Completed' ? 'complete' : 'start'; if (action === 'start' && allowed.actions.includes('open')) { await maintenanceApi.transitionWorkOrder(row.id, { action: 'open' }); allowed = await maintenanceApi.allowedActions(row.id) } if (!allowed.actions.includes(action)) { setNotice(`${title(action)} is not allowed while the work order is ${row.status}.`); return } const value = await maintenanceApi.transitionWorkOrder(row.id, { action, ...(action === 'complete' ? { actual_cost_minor: 0 } : {}) }); setRows(items => items.map(item => item.id === value.id ? fromApi(value) : item)); setMenu(null); setNotice(`Work order marked ${status.toLowerCase()}.`) } catch (error) { setNotice(error instanceof Error ? error.message : 'Unable to update work order.') } }
+  const remove = async () => { if (!deleting) return; setDeleting(null); setNotice('Work orders are auditable records and cannot be deleted. Use Cancel when allowed.') }
   const exportRows = () => { const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'maintenance-work-orders.json'; link.click(); URL.revokeObjectURL(url) }
-  const importRows = async (file?: File) => { if (!file) return; try { const values = JSON.parse(await file.text()) as WorkOrder[]; await Promise.all(values.map(value => putDashboardState('maintenance-work-orders', value.id, value))); await load(); setNotice(`${values.length} work orders imported.`) } catch { setNotice('Import failed. Select a valid work orders JSON file.') } }
+  const importRows = async (file?: File) => { if (!file) return; try { const values = JSON.parse(await file.text()) as WorkOrder[]; for (const value of values) await maintenanceApi.createWorkOrder({ code: value.code, subject: value.subject, category: value.category.toLowerCase().startsWith('preventive') ? 'preventive' : value.category.toLowerCase(), priority: value.priority.toLowerCase(), [value.targetType.toLowerCase() === 'vehicle' ? 'vehicle_id' : 'equipment_id']: value.target, currency: 'INR', estimated_cost_minor: 0 }); await load(); setNotice(`${values.length} work orders imported.`) } catch { setNotice('Import failed. Check the records and asset IDs.') } }
 
   return <div className="maintenance-list-page work-orders-page">
     <header className="maintenance-list-header"><h2>Work Orders</h2><div className="maintenance-list-search"><Search /><input aria-label="Search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search Work Orders" /></div><div className="maintenance-list-actions">
@@ -113,13 +131,13 @@ export function MaintenanceWorkOrdersPage() {
 
     {guideOpen && <WorkOrdersGuide onClose={closeGuide} />}
 
-    {editor && <div className="schedule-editor-backdrop"><section className="schedule-editor" role="dialog" aria-modal="true" aria-label={viewOnly ? 'Work order details' : editor.id ? 'Edit work order' : 'Create new work order'}><header><div><h2>{viewOnly ? editor.subject : editor.id ? 'Edit work order' : 'Create new work order'}</h2><p>{viewOnly ? 'Review the work order details.' : 'Enter the work order details below.'}</p></div><button aria-label="Close work order form" onClick={() => setEditor(null)}><X /></button></header><form onSubmit={save}><div className="schedule-editor-body"><Section title="Identification" subtitle="Work Order Details"><label>Code<input disabled={viewOnly} value={editor.code} onChange={event => setEditor({ ...editor, code: event.target.value })} placeholder="Auto-generated if left blank" /></label><label>Subject<input disabled={viewOnly} required value={editor.subject} onChange={event => setEditor({ ...editor, subject: event.target.value })} placeholder="Brief description of the work order" /></label></Section><Section title="Work Order Classification"><label>Category<select disabled={viewOnly} required value={editor.category} onChange={event => setEditor({ ...editor, category: event.target.value })}><option value="">Select Category</option><option>Inspection</option><option>Service</option><option>Repair</option><option>Preventive Maintenance</option></select></label><label>Status<select disabled={viewOnly} required value={editor.status} onChange={event => setEditor({ ...editor, status: event.target.value })}><option value="">Select Status</option><option>Open</option><option>In Progress</option><option>On Hold</option><option>Completed</option><option>Cancelled</option></select></label><label>Priority<select disabled={viewOnly} required value={editor.priority} onChange={event => setEditor({ ...editor, priority: event.target.value })}><option value="">Select Priority</option><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label></Section><Section title="Assignment" subtitle="Target Asset"><label>Target Type<select disabled={viewOnly} value={editor.targetType} onChange={event => setEditor({ ...editor, targetType: event.target.value, target: '' })}><option value="">Select target type</option><option>Vehicle</option><option>Equipment</option></select></label>{editor.targetType && <ReferenceSelect label="Target" disabled={viewOnly} value={editor.target} options={references.assetsFor(editor.targetType)} placeholder="Select target asset" onChange={target => setEditor({ ...editor, target })} />}<label>Assignee Type<select disabled={viewOnly} value={editor.assigneeType} onChange={event => setEditor({ ...editor, assigneeType: event.target.value, assignee: '' })}><option value="">Select assignee type</option><option>Vendor</option><option>Contact</option><option>User</option></select></label>{editor.assigneeType && <ReferenceSelect label="Assignee" disabled={viewOnly} value={editor.assignee} options={references.assigneesFor(editor.assigneeType)} placeholder="Select assignee" onChange={assignee => setEditor({ ...editor, assignee })} />}</Section><Section title="Scheduling" subtitle="Dates"><label>Opened At<input disabled={viewOnly} type="date" value={editor.openedAt} onChange={event => setEditor({ ...editor, openedAt: event.target.value })} /></label><label>Due At<input disabled={viewOnly} type="date" value={editor.dueAt} onChange={event => setEditor({ ...editor, dueAt: event.target.value })} /></label><label>Closed At<input disabled={viewOnly} type="date" value={editor.closedAt} onChange={event => setEditor({ ...editor, closedAt: event.target.value })} /></label></Section><Section title="Instructions"><label className="wide">Instructions<textarea disabled={viewOnly} value={editor.instructions} onChange={event => setEditor({ ...editor, instructions: event.target.value })} placeholder="Step-by-step instructions for the technician" /></label></Section><section className="work-order-metadata-section"><h3>Metadata</h3><WorkOrderMetadata key={editor.id || 'new'} value={editor.metadata} disabled={viewOnly} onChange={metadata => setEditor(current => current ? { ...current, metadata } : current)} /></section></div><footer><button type="button" onClick={() => setEditor(null)}>{viewOnly ? 'Close' : 'Cancel'}</button>{!viewOnly && <button className="primary" type="submit">{editor.id ? 'Save Changes' : 'Create Work Order'}</button>}</footer></form></section></div>}
+    {editor && <WorkOrderEditor editor={editor} setEditor={setEditor} viewOnly={viewOnly} assets={assets} assignees={assignees} onSubmit={save} onClose={() => setEditor(null)} />}
     {deleting && <div className="vehicle-delete-backdrop" onMouseDown={event => event.target === event.currentTarget && setDeleting(null)}><section className="vehicle-delete-dialog" role="alertdialog" aria-modal="true"><div className="vehicle-delete-content"><span className="vehicle-delete-warning"><AlertTriangle /></span><div><h2>Delete Work Order ({deleting.code})?</h2><p>This action cannot be undone. Once deleted, the record will be permanently removed.</p></div></div><footer><button onClick={() => setDeleting(null)}><X />Cancel</button><button className="danger" onClick={() => void remove()}><Trash2 />Confirm Delete</button></footer></section></div>}
   </div>
 }
 
 const workOrderAttributes = [
-  ['Code','Auto-generated reference code (for example, WO-00123)'],['Subject','Title of the maintenance or repair task'],['Target','The vehicle, driver, or equipment the work is performed on'],['Assignee','Person, vendor, or team responsible for the task'],['Priority','Low, medium, high, or urgent'],['Status','Current stage in the work-order workflow'],['Opened At','When the work order was created'],['Due At','Deadline for completion'],['Closed At','When the work order was completed and closed'],['Instructions','Detailed task instructions'],['Checklist','Structured list of sub-tasks to complete'],['Estimated Cost','Pre-work cost estimate'],['Approved Budget','Authorized spend amount'],['Actual Cost','Recorded cost after completion'],['Currency','Currency used for all cost fields'],['Cost Center','Budget code or department for accounting'],
+  ['Code','Auto-generated reference code (for example, WO-00123)'],['Subject','Title of the maintenance or repair task'],['Target','The vehicle, driver, or equipment the work is performed on'],['Assignee','Driver, vendor, or contact responsible for the task'],['Priority','Low, medium, high, or urgent'],['Status','Current stage in the work-order workflow'],['Opened At','When the work order was created'],['Due At','Deadline for completion'],['Closed At','When the work order was completed and closed'],['Instructions','Detailed task instructions'],['Checklist','Structured list of sub-tasks to complete'],['Estimated Cost','Pre-work cost estimate'],['Approved Budget','Authorized spend amount'],['Actual Cost','Recorded cost after completion'],['Currency','Currency used for all cost fields'],['Cost Center','Budget code or department for accounting'],
 ]
 
 function WorkOrdersGuide({onClose}:{onClose:()=>void}) {
@@ -135,6 +153,25 @@ function WorkOrdersGuide({onClose}:{onClose:()=>void}) {
       <h2>Creating a Work Order</h2><ol><li>Open Fleet-Ops → Maintenance → Work Orders.</li><li>Click <strong>New Work Order</strong>.</li><li>Set the subject, category, status, and priority.</li><li>Select the target vehicle or equipment.</li><li>Choose the assignee and due date.</li><li>Add detailed instructions and checklist items.</li><li>Enter estimated cost and approved budget.</li><li>Save the work order.</li></ol>
       <h2>Closing a Work Order</h2><p>Complete every checklist item, record the actual cost, add completion notes, and mark the work order as completed. The closure date is recorded automatically.</p>
     </article>
+  </section></div>
+}
+
+function WorkOrderEditor({ editor, setEditor, viewOnly, assets, assignees, onSubmit, onClose }: { editor: WorkOrder; setEditor: React.Dispatch<React.SetStateAction<WorkOrder | null>>; viewOnly: boolean; assets: AssetOption[]; assignees: AssigneeOption[]; onSubmit: (event: FormEvent) => void; onClose: () => void }) {
+  const references = useMaintenanceReferenceOptions()
+  const update = (changes: Partial<WorkOrder>) => setEditor(current => current ? { ...current, ...changes } : current)
+  return <div className="schedule-editor-backdrop"><section className="schedule-editor work-order-reference-editor" role="dialog" aria-modal="true" aria-label={viewOnly ? 'Work order details' : editor.id ? 'Edit work order' : 'Create new work order'}>
+    <form onSubmit={onSubmit}>
+      <header><div><h2>{viewOnly ? editor.subject : editor.id ? 'Edit work order' : 'Create new work order'}</h2><p>{viewOnly ? 'Review the work order details.' : 'Enter the work order details below.'}</p></div><div>{!viewOnly && <button className="primary" type="submit">{editor.id ? 'Save Changes' : 'Create Work Order'}</button>}<button type="button" aria-label="Close work order form" onClick={onClose}><X /></button></div></header>
+      <div className="schedule-editor-body">
+        <Section title="Identification" subtitle="Work Order Details"><label>Code<input disabled={viewOnly} value={editor.code} onChange={event => update({ code: event.target.value })} placeholder="Auto-generated if left blank" /></label><label>Subject<input disabled={viewOnly} required value={editor.subject} onChange={event => update({ subject: event.target.value })} placeholder="Brief description of the work order" /></label></Section>
+        <Section title="Work Order Classification"><label>Category<select disabled={viewOnly} required value={editor.category} onChange={event => update({ category: event.target.value })}><option value="">Select Category</option><option>Inspection</option><option>Service</option><option>Repair</option><option>Preventive Maintenance</option></select></label><div className="work-order-status-priority"><strong>Status &amp; Priority</strong><div><label>Status<select disabled={viewOnly} required value={editor.status} onChange={event => update({ status: event.target.value })}><option value="">Select Status</option><option>Open</option><option>In Progress</option><option>On Hold</option><option>Completed</option><option>Cancelled</option></select></label><label>Priority<select disabled={viewOnly} required value={editor.priority} onChange={event => update({ priority: event.target.value })}><option value="">Select Priority</option><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label></div></div></Section>
+        <Section title="Assignment" subtitle="Target Asset"><label>Target Type<select disabled={viewOnly} required value={editor.targetType} onChange={event => update({ targetType: event.target.value, target: '' })}><option value="">Select target type</option><option>Vehicle</option><option>Equipment</option></select></label>{editor.targetType && <label>Target<select disabled={viewOnly} required value={editor.target} onChange={event => update({ target: event.target.value })}><option value="">Select target asset</option>{assets.filter(asset => asset.type === editor.targetType).map(asset => <option key={asset.id} value={asset.id}>{asset.label}</option>)}</select></label>}<label>Assignee Type<select disabled={viewOnly} value={editor.assigneeType} onChange={event => update({ assigneeType: event.target.value, assignee: '' })}><option value="">Select assignee type</option><option>User</option><option>Vendor</option><option>Contact</option></select></label>{editor.assigneeType === 'User' && <label>Assignee<select disabled={viewOnly} value={editor.assignee} onChange={event => update({ assignee: event.target.value })}><option value="">Select organization user</option>{assignees.map(person => <option key={person.id} value={person.id}>{person.label}</option>)}</select></label>}{(editor.assigneeType === 'Vendor' || editor.assigneeType === 'Contact') && <ReferenceSelect label="Assignee" disabled={viewOnly} value={editor.assignee} options={references.assigneesFor(editor.assigneeType)} placeholder="Select assignee" onChange={assignee => update({ assignee })} />}</Section>
+        <Section title="Scheduling" subtitle="Dates"><label>Opened At<input disabled={viewOnly} type="date" value={editor.openedAt} onChange={event => update({ openedAt: event.target.value })} /></label><label>Due At<input disabled={viewOnly} type="date" value={editor.dueAt} onChange={event => update({ dueAt: event.target.value })} /></label><label>Closed At<input disabled={viewOnly || !editor.id} type="date" value={editor.closedAt} onChange={event => update({ closedAt: event.target.value })} /></label></Section>
+        <Section title="Instructions"><label className="wide">Instructions<textarea disabled={viewOnly} value={editor.instructions} onChange={event => update({ instructions: event.target.value })} placeholder="Step-by-step instructions for the technician" /></label></Section>
+        <section className="work-order-metadata-section"><h3>Metadata</h3><WorkOrderMetadata key={editor.id || 'new'} value={editor.metadata} disabled={viewOnly} onChange={metadata => update({ metadata })} /></section>
+      </div>
+      <footer><button type="button" onClick={onClose}>{viewOnly ? 'Close' : 'Cancel'}</button>{!viewOnly && <button className="primary" type="submit">{editor.id ? 'Save Changes' : 'Create Work Order'}</button>}</footer>
+    </form>
   </section></div>
 }
 

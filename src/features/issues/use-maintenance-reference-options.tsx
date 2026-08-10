@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApiData } from '@/hooks/use-api-data'
 import { listDashboardState } from '@/lib/dashboard-state'
+import { maintenanceApi } from '@/lib/maintenance-api'
 
 export type MaintenanceOption = { id: string; label: string }
 
@@ -33,18 +34,18 @@ export function useMaintenanceReferenceOptions() {
   useEffect(() => {
     let active = true
     Promise.all([
-      listDashboardState<StoredReference>('maintenance-equipment'),
+      maintenanceApi.listEquipment(),
       listDashboardState<StoredReference>('resource-vendors'),
       listDashboardState<StoredReference>('resource-contacts'),
       listDashboardState<StoredReference>('resource-places'),
-      listDashboardState<StoredReference>('maintenance-work-orders'),
+      maintenanceApi.listWorkOrders(),
     ]).then(([equipmentEntries, vendorEntries, contactEntries, placeEntries, workOrderEntries]) => {
       if (!active) return
-      setEquipment(storedOptions(equipmentEntries))
+      setEquipment(equipmentEntries.map(entry => ({ id: entry.id, label: entry.name || entry.code || entry.id })))
       setVendors(storedOptions(vendorEntries))
       setContacts(storedOptions(contactEntries))
       setPlaces(storedOptions(placeEntries))
-      setWorkOrders(storedOptions(workOrderEntries))
+      setWorkOrders(workOrderEntries.map(entry => ({ id: entry.id, label: entry.code || entry.subject || entry.id })))
     }).catch(() => {
       if (!active) return
       setEquipment([])

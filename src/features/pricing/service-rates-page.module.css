@@ -1,0 +1,14 @@
+.filterCard{top:100px!important;right:258px!important;width:min(500px,calc(100vw - 540px))!important}
+.filterCard>header{height:36px!important;padding:0 12px!important}
+.filterCard>div{padding:9px 12px 11px!important;gap:8px 10px!important}
+.filterCard input,.filterCard select{height:34px!important}
+.filterCard>footer{height:45px!important;padding:0 12px!important}
+.filterCard>footer button{height:31px!important}
+@media(max-width:900px){.filterCard{top:114px!important;right:12px!important;width:min(500px,calc(100vw - 24px))!important}}
+@media(max-width:560px){.filterCard{top:150px!important;width:calc(100vw - 24px)!important}.filterCard>div{grid-template-columns:1fr!important;max-height:280px;overflow-y:auto}}
+.columnsCard{width:210px!important;padding:11px!important;gap:8px!important;overflow:visible!important}
+.columnsCard>strong{display:block;padding-bottom:7px;border-bottom:1px solid var(--border);font-size:11px;text-transform:none!important}
+.columnsCard>small{display:block;margin-top:-4px;color:var(--muted);font-size:9px}
+.columnsCard :global(.rate-columns-list){max-height:290px;overflow-y:auto;padding:0!important}
+.columnsCard :global(.rate-columns-list>label){min-height:29px;padding:0 3px;font-size:11px}
+.columnsDone{width:100%;height:34px!important;margin-top:4px;border:0!important;border-radius:6px!important;background:#f45112!important;color:#fff!important;font-size:12px!important;font-weight:650!important}
