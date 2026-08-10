@@ -178,8 +178,8 @@ export function AppShell({ children, homeMode = false }: { children: React.React
       if (cancelled) return
       const saved = entries.find(entry => entry.key === 'preferences')?.value
       const useDark = saved?.dark ?? window.matchMedia('(prefers-color-scheme: dark)').matches
-      setDark(useDark); setCollapsed(Boolean(saved?.collapsed)); setLocale(saved?.locale || 'English'); document.documentElement.classList.toggle('dark', useDark); document.documentElement.style.colorScheme = useDark ? 'dark' : 'light'; localStorage.setItem('droo-theme', useDark ? 'dark' : 'light')
-    }).catch(() => { const useDark = document.documentElement.classList.contains('dark'); setDark(useDark) })
+      setDark(useDark); setCollapsed(Boolean(saved?.collapsed)); setLocale(saved?.locale || 'English'); if (useDark) setCurrentSidebarGroup(null); document.documentElement.classList.toggle('dark', useDark); document.documentElement.style.colorScheme = useDark ? 'dark' : 'light'; localStorage.setItem('droo-theme', useDark ? 'dark' : 'light')
+    }).catch(() => { const useDark = document.documentElement.classList.contains('dark'); setDark(useDark); if (useDark) setCurrentSidebarGroup(null) })
     return () => { cancelled = true }
   }, [])
 
@@ -210,6 +210,7 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const toggleTheme = () => {
     const next = !dark
     setDark(next)
+    if (next) setCurrentSidebarGroup(null)
     document.documentElement.classList.toggle('dark', next)
     document.documentElement.style.colorScheme = next ? 'dark' : 'light'
     localStorage.setItem('droo-theme', next ? 'dark' : 'light')
