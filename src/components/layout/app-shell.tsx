@@ -10,7 +10,7 @@ import {
   Landmark, MapPin, PanelLeft, Radio, ReceiptText, Rocket, Search, Send, Settings2, Shield, SlidersHorizontal, Store,
   Truck, Unplug, UserRound, Users, UsersRound, WalletCards, Warehouse, Webhook, Workflow, Wrench, X,
 } from 'lucide-react'
-import { useApiData } from '@/hooks/use-api-data'
+import { fetchAuthenticated, useApiData } from '@/hooks/use-api-data'
 import type { ApiRecord } from '@/types/dashboard'
 import { listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 import { ComposeDialog } from '@/components/ui/compose-dialog'
@@ -58,12 +58,6 @@ const storefrontItems = [
   ['Launch App', '/storefront?view=launch', Rocket],
 ] as const
 
-const storefrontProductCategories = [
-  ['All Products', '/storefront?view=products', Package],
-  ['Fresh Produce', '/storefront?view=products&category=Fresh%20Produce', Folder],
-  ['Pantry Staples', '/storefront?view=products&category=Pantry%20Staples', Folder],
-] as const
-
 const storefrontSettingsItems = [
   ['General', '/storefront?view=settings', Settings2],
   ['Location', '/storefront?view=settings&section=location', MapPin],
@@ -100,6 +94,7 @@ const developerItems = [
 
 type OpenMenu = 'organization' | 'user' | 'notifications' | 'locale' | 'chat' | 'more' | 'customize' | 'shortcuts' | null
 type ResourceTab = 'Fleets' | 'Drivers' | 'Vehicles'
+type StorefrontCategory = { id: string; name: string; active: boolean; product_count?: number }
 
 function SidebarResources() {
   const [resourceTab, setResourceTab] = useState<ResourceTab>('Fleets')
@@ -160,6 +155,8 @@ export function AppShell({ children, homeMode = false }: { children: React.React
   const initialRouteGroup = routeSidebarSelection?.group ?? (initialMaintenanceItem ? 'Maintenance' : null)
   const initialRouteItem = routeSidebarSelection?.label ?? initialMaintenanceItem
   const [sidebarSearch, setSidebarSearch] = useState('')
+  const [storefrontCategories, setStorefrontCategories] = useState<StorefrontCategory[]>([])
+  const [storefrontCategoriesLoading, setStorefrontCategoriesLoading] = useState(true)
   const [currentSidebarGroup, setCurrentSidebarGroup] = useState<string | null>(initialRouteGroup)
   const [, setSelectedSidebarItem] = useState<string | null>(initialRouteItem)
   const initialProduct = pathname.startsWith('/storefront') ? 'Storefront' : pathname.startsWith('/ledger') ? 'Ledger' : pathname.startsWith('/iam') ? 'IAM' : pathname.startsWith('/developers') ? 'Developers' : 'Fleet-Ops'
@@ -182,6 +179,22 @@ export function AppShell({ children, homeMode = false }: { children: React.React
     }).catch(() => { const useDark = document.documentElement.classList.contains('dark'); setDark(useDark); if (useDark) setCurrentSidebarGroup(null) })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (activeProduct !== 'Storefront' || searchParams.get('view') !== 'products') return
+    let cancelled = false
+    Promise.resolve().then(() => { if (!cancelled) setStorefrontCategoriesLoading(true) })
+    fetchAuthenticated('/v1/admin/storefront/categories')
+      .then(async response => {
+        if (!response.ok) throw new Error(`Category request failed (${response.status})`)
+        const value = await response.json() as StorefrontCategory[] | { data?: StorefrontCategory[] }
+        const rows = Array.isArray(value) ? value : value.data || []
+        if (!cancelled) setStorefrontCategories(rows.filter(category => category.active !== false))
+      })
+      .catch(() => { if (!cancelled) setStorefrontCategories([]) })
+      .finally(() => { if (!cancelled) setStorefrontCategoriesLoading(false) })
+    return () => { cancelled = true }
+  }, [activeProduct, searchParams])
 
   const savePreferences = (next: { dark: boolean; collapsed: boolean; locale: string }) => { void putDashboardState('ui-preferences', 'preferences', next).catch(() => {}) }
 
@@ -241,12 +254,18 @@ export function AppShell({ children, homeMode = false }: { children: React.React
           {searchParams.get('view') === 'products' ? <>
             <Link href="/storefront" className="storefront-sidebar-back"><ChevronLeft className="storefront-back-icon" /><span>Products</span></Link>
             <div className="storefront-category-links">
-              {storefrontProductCategories.filter(([label]) => label.toLowerCase().includes(sidebarSearch.toLowerCase())).map(([label, href, Icon]) => {
-                const targetCategory = href.includes('category=') ? decodeURIComponent(href.split('category=')[1]) : null
+              {[{ id: 'all', name: 'All Products', active: true }, ...storefrontCategories]
+                .filter(category => category.name.toLowerCase().includes(sidebarSearch.toLowerCase()))
+                .map(category => {
+                const targetCategory = category.id === 'all' ? null : category.name
+                const href = targetCategory ? `/storefront?view=products&category=${encodeURIComponent(targetCategory)}` : '/storefront?view=products'
                 const currentCategory = searchParams.get('category')
                 const isActive = targetCategory ? currentCategory === targetCategory : !currentCategory
-                return <Link key={label} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{label}</span></Link>
+                const Icon = category.id === 'all' ? Package : Folder
+                return <Link key={category.id} href={href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMobile(false)}><Icon /><span>{category.name}</span>{category.id !== 'all' && typeof category.product_count === 'number' && <small>{category.product_count}</small>}</Link>
               })}
+              {storefrontCategoriesLoading && <span className="storefront-category-state">Loading categories...</span>}
+              {!storefrontCategoriesLoading && !storefrontCategories.length && <span className="storefront-category-state">No categories created yet.</span>}
             </div>
           </> : searchParams.get('view') === 'settings' ? <>
             <Link href="/storefront" className="storefront-sidebar-back"><ChevronLeft className="storefront-back-icon" /><span>Settings</span></Link>
