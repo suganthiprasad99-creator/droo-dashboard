@@ -496,20 +496,20 @@ function ProductsPage(props: {
             </div>
           )}
         </section>
+        <footer className="sf-pagination">
+          <span>
+            Showing {visible.length ? 1 : 0} to {visible.length} of{" "}
+            {visible.length} results
+          </span>
+          <button disabled>
+            <ChevronLeft />
+          </button>
+          <b>1</b>
+          <button disabled>
+            <ChevronRight />
+          </button>
+        </footer>
       </div>
-      <footer className="sf-pagination">
-        <span>
-          Showing {visible.length ? 1 : 0} to {visible.length} of{" "}
-          {visible.length} results
-        </span>
-        <button disabled>
-          <ChevronLeft />
-        </button>
-        <b>1</b>
-        <button disabled>
-          <ChevronRight />
-        </button>
-      </footer>
       {addons && <AddonManager close={() => setAddons(false)} />}
     </div>
   );
