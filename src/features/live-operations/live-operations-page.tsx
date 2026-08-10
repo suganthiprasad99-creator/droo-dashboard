@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ArrowUpRight, Ban, Binoculars, Building2, CarFront, Contact, ExternalLink, Eye, Filter, Layers3, LayoutDashboard, List, Map as MapIcon, MapPin, MoreHorizontal, Navigation, Paperclip, Pencil, Play, Plus, Radio, RefreshCw, Route, Search, Send, SkipBack, SkipForward, SlidersHorizontal, Square, Table2, Trash2, Truck, Upload, UserMinus, UserRound, X, Zap } from 'lucide-react'
-import { useApiData } from '@/hooks/use-api-data'
+import { fetchAuthenticated, useApiData } from '@/hooks/use-api-data'
 import { GoogleLiveMap } from '@/components/google-live-map'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ComposeDialog } from '@/components/ui/compose-dialog'
 import { VehicleEditor } from '@/components/vehicle-editor'
-import { listDashboardState, putDashboardState } from '@/lib/dashboard-state'
 import type { ApiRecord } from '@/types/dashboard'
 
 type ViewMode = 'map' | 'table' | 'board'
@@ -89,7 +88,7 @@ function boardStage(row: Record<string, unknown>, index: number): BoardStage {
 export function LiveOperationsPage({ initialView = 'map' }: { initialView?: ViewMode }) {
   const { rows, loading, error, refresh } = useApiData('Live Operations', 10_000, false)
   const { rows: orderRows, loading: ordersLoading, refresh: refreshOrders } = useApiData('Orders', 10_000, false)
-  const { rows: vehicleRows, loading: vehiclesLoading } = useApiData('Vehicles', 10_000, false)
+  const { rows: vehicleRows, loading: vehiclesLoading, refresh: refreshVehicles } = useApiData('Vehicles', 10_000, false)
   const { rows: driverRows, loading: driversLoading } = useApiData('Drivers', 10_000, false)
   const { rows: geofenceRows } = useApiData('Service Areas', 10_000, false)
   const [importedRows, setImportedRows] = useState<ApiRecord[]>([])
@@ -142,15 +141,6 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
   const resourceSearchRef = useRef<HTMLInputElement>(null)
   const mapSearchRef = useRef<HTMLInputElement>(null)
   const mapDragStart = useRef<{ y: number; height: number } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([listDashboardState<ApiRecord>('vehicle-overrides'), listDashboardState<boolean>('deleted-vehicles')]).then(([overrides, deleted]) => {
-      if (cancelled) return
-      setVehicleOverrides(Object.fromEntries(overrides.map(entry => [entry.key, entry.value])))
-      setHiddenVehicleIds(new Set(deleted.filter(entry => entry.value).map(entry => entry.key)))
-    }).catch(value => { if (!cancelled) setActionNotice(value instanceof Error ? value.message : 'Unable to load vehicle state.') })
-    return () => { cancelled = true }
-  }, [])
   const allRows = useMemo(() => [...orderRows, ...importedRows], [importedRows, orderRows])
   const filtered = useMemo(() => allRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'all' || String(row.status || '').toLowerCase() === statusFilter)), [allRows, search, statusFilter])
   const orderStatuses = useMemo(() => Array.from(new Set(allRows.map(row => String(row.status || '').toLowerCase()).filter(Boolean))).sort(), [allRows])
@@ -388,13 +378,45 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     const id = String(vehicle.id || '')
     if (!id) { setActionNotice('Vehicle ID is missing.'); return }
     const label = String(vehicle.registration_number || vehicle.name || id)
-    try { await putDashboardState('deleted-vehicles', id, true) } catch (value) { setActionNotice(value instanceof Error ? value.message : 'Unable to delete vehicle.'); return }
+    try {
+      const allowed = await fetchAuthenticated(`/v1/admin/vehicles/${encodeURIComponent(id)}/allowed-actions`)
+      if (!allowed.ok) throw new Error('Unable to verify vehicle actions.')
+      const allowedBody = await allowed.json() as { actions?: string[] }
+      if (!allowedBody.actions?.includes('archive')) throw new Error('This vehicle cannot be archived in its current state.')
+      const response = await fetchAuthenticated(`/v1/admin/vehicles/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Idempotency-Key': crypto.randomUUID() } })
+      if (!response.ok) throw new Error(`Unable to archive vehicle (${response.status}).`)
+    } catch (value) { setActionNotice(value instanceof Error ? value.message : 'Unable to archive vehicle.'); return }
     setHiddenVehicleIds(current => new Set(current).add(id))
     if (selectedVehicleId === id) { setSelectedVehicleId(null); setSelected(null); setShowSelectedRoute(false) }
     setResourceActionRow(null)
     setDeletingVehicle(null)
-    setActionNotice(`${label} deleted from the vehicle table.`)
-  }, [selectedVehicleId])
+    setActionNotice(`${label} archived.`)
+    refreshVehicles()
+  }, [refreshVehicles, selectedVehicleId])
+
+  const openVehicleEditor = useCallback(async (vehicle: ApiRecord) => {
+    const id = String(vehicle.id || '')
+    if (!id) return
+    try {
+      const response = await fetchAuthenticated(`/v1/admin/vehicles/${encodeURIComponent(id)}`)
+      if (!response.ok) throw new Error(`Unable to load vehicle (${response.status}).`)
+      setEditingVehicle(await response.json() as ApiRecord)
+      setResourceActionRow(null)
+    } catch (value) { setActionNotice(value instanceof Error ? value.message : 'Unable to load vehicle.') }
+  }, [])
+
+  const saveVehicle = useCallback(async (vehicle: ApiRecord) => {
+    const id = String(vehicle.id || '')
+    try {
+      const response = await fetchAuthenticated(`/v1/admin/vehicles/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ vehicle }) })
+      if (!response.ok) throw new Error(`Unable to save vehicle (${response.status}).`)
+      const saved = await response.json() as ApiRecord
+      setVehicleOverrides(current => ({ ...current, [id]: saved }))
+      setEditingVehicle(null)
+      setActionNotice('Vehicle changes saved.')
+      refreshVehicles()
+    } catch (value) { setActionNotice(value instanceof Error ? value.message : 'Unable to save vehicle changes.') }
+  }, [refreshVehicles])
   const issueMapCommand = useCallback((type: 'zoom-in' | 'zoom-out' | 'locate' | 'toggle-type') => setMapCommand({ type, nonce: Date.now() }), [])
   const resizeMap = useCallback((clientY: number) => {
     if (!mapDragStart.current) return
@@ -597,9 +619,9 @@ export function LiveOperationsPage({ initialView = 'map' }: { initialView?: View
     </section>}
     {composeOpen && <ComposeDialog module="Orders" label="Create Order" onClose={() => { setComposeOpen(false); refreshOrders(); refresh() }} />}
     {detailsRow && <div className="order-action-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setDetailsRow(null) }}><section className="order-action-dialog" role="dialog" aria-modal="true"><header><div><small>{detailsMode === 'vehicle' ? 'VEHICLE DETAILS' : 'ORDER DETAILS'}</small><h2>{String(detailsMode === 'vehicle' ? detailsRow.registration_number || detailsRow.name || detailsRow.id || 'Vehicle' : detailsRow.external_reference || detailsRow.active_order_id || detailsRow.id || 'Order')}</h2></div><button onClick={() => setDetailsRow(null)} aria-label="Close details"><X /></button></header>{detailsMode === 'vehicle' ? <dl><div><dt>Status</dt><dd><StatusBadge value={String(detailsRow.status || 'Unknown')} /></dd></div><div><dt>Type</dt><dd>{String(detailsRow.type || '—')}</dd></div><div><dt>Driver</dt><dd>{String(detailsRow.assigned_driver || detailsRow.driver_id || 'Unassigned')}</dd></div><div><dt>Location</dt><dd>{positionCoordinate((detailsRow.position as ApiRecord | undefined)?.latitude)} {positionCoordinate((detailsRow.position as ApiRecord | undefined)?.longitude)}</dd></div></dl> : <dl><div><dt>Status</dt><dd><StatusBadge value={String(detailsRow.status || 'Unknown')} /></dd></div><div><dt>Driver</dt><dd>{assignedDriver(detailsRow)}</dd></div><div><dt>Pickup</dt><dd>{stopLabel(detailsRow, 'pickup')}</dd></div><div><dt>Dropoff</dt><dd>{stopLabel(detailsRow, 'dropoff')}</dd></div></dl>}<footer><button onClick={() => { setDetailsRow(null); changeView('map') }}>Show on map</button><button className="primary" onClick={() => setDetailsRow(null)}>Done</button></footer></section></div>}
-    {resourceActionRow && <><button className="order-actions-dismiss" aria-label="Close vehicle actions" onClick={() => setResourceActionRow(null)} /><div className="global-order-actions-menu" style={{ top: resourceActionPosition.top, right: resourceActionPosition.right }} role="menu"><header>Vehicle Actions</header><button onClick={() => focusVehicleOnMap(resourceActionRow, true)}><Eye />View Vehicle</button><button onClick={() => { setEditingVehicle(resourceActionRow); setResourceActionRow(null) }}><Pencil />Edit Vehicle</button><button onClick={() => focusVehicleOnMap(resourceActionRow)}><MapPin />Locate Vehicle on Map</button><hr /><button onClick={() => { setDeletingVehicle(resourceActionRow); setResourceActionRow(null) }}><Trash2 />Delete Vehicle</button></div></>}
+    {resourceActionRow && <><button className="order-actions-dismiss" aria-label="Close vehicle actions" onClick={() => setResourceActionRow(null)} /><div className="global-order-actions-menu" style={{ top: resourceActionPosition.top, right: resourceActionPosition.right }} role="menu"><header>Vehicle Actions</header><button onClick={() => focusVehicleOnMap(resourceActionRow, true)}><Eye />View Vehicle</button><button onClick={() => void openVehicleEditor(resourceActionRow)}><Pencil />Edit Vehicle</button><button onClick={() => focusVehicleOnMap(resourceActionRow)}><MapPin />Locate Vehicle on Map</button><hr /><button onClick={() => { setDeletingVehicle(resourceActionRow); setResourceActionRow(null) }}><Trash2 />Archive Vehicle</button></div></>}
     {deletingVehicle && <div className="vehicle-delete-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setDeletingVehicle(null) }}><section className="vehicle-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="vehicle-delete-title" aria-describedby="vehicle-delete-description"><div className="vehicle-delete-content"><span className="vehicle-delete-warning"><AlertTriangle /></span><div><h2 id="vehicle-delete-title">Delete Vehicle ({String(deletingVehicle.name || deletingVehicle.registration_number || deletingVehicle.id || 'Vehicle')})?</h2><p id="vehicle-delete-description">This action cannot be undone. Once deleted, the record will be permanently removed.</p></div></div><footer><button type="button" onClick={() => setDeletingVehicle(null)}><X />Cancel</button><button type="button" className="danger" onClick={() => deleteVehicle(deletingVehicle)}><Trash2 />Confirm Delete</button></footer></section></div>}
-    {editingVehicle && <VehicleEditor vehicle={editingVehicle} drivers={driverRows} onClose={() => setEditingVehicle(null)} onSave={vehicle => { const id = String(vehicle.id || ''); putDashboardState('vehicle-overrides', id, vehicle).then(() => { setVehicleOverrides(current => ({ ...current, [id]: vehicle })); setEditingVehicle(null); setActionNotice('Vehicle changes saved.') }).catch(value => setActionNotice(value instanceof Error ? value.message : 'Unable to save vehicle changes.')) }} />}
+    {editingVehicle && <VehicleEditor vehicle={editingVehicle} drivers={driverRows} onClose={() => setEditingVehicle(null)} onSave={vehicle => void saveVehicle(vehicle)} />}
     {orderActionRow && (() => { const row = filtered.find((item, index) => String(item.id || index) === orderActionRow); if (!row) return null; return <><button className="order-actions-dismiss" aria-label="Close order actions" onClick={() => setOrderActionRow(null)} /><div className="global-order-actions-menu" style={{ top: orderActionPosition.top, right: orderActionPosition.right }} role="menu"><header>Order Actions</header><button onClick={() => { setDetailsRow(row); setOrderActionRow(null) }}><Eye />View Order</button><button disabled={String(row.status).toLowerCase() !== 'assigned'} onClick={() => { setOrderActionRow(null); mutateOrder(row, 'unassign').then(() => setActionNotice('Driver unassigned.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Unassign failed.')) }}><UserMinus />Unassign Driver</button><button disabled={['delivered', 'cancelled', 'failed'].includes(String(row.status).toLowerCase())} onClick={() => { if (!window.confirm('Cancel this order?')) return; setOrderActionRow(null); cancelOrder(row).then(() => setActionNotice('Order cancelled.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Cancel failed.')) }}><Ban />Cancel Order</button><hr /><button onClick={() => { if (!window.confirm('Delete this order from operational lists?')) return; setOrderActionRow(null); mutateOrder(row, 'archive').then(() => setActionNotice('Order deleted.')).catch(error => setActionNotice(error instanceof Error ? error.message : 'Delete failed.')) }}><Trash2 />Delete Order</button></div></> })()}
     {actionNotice && <div className="orders-action-notice" role="status">{actionNotice}<button onClick={() => setActionNotice('')}><X /></button></div>}
   </div>
